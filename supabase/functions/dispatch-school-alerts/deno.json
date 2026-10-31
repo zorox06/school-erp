@@ -1,0 +1,1 @@
+{"compilerOptions":{"strict":true},"tasks":{"check":"deno check index.ts","test":"deno test --allow-env index_test.ts"}}

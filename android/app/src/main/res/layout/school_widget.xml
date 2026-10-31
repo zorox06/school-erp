@@ -1,0 +1,5 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/widget_root" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="20dp" android:background="@drawable/widget_background">
+ <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="SCHOOLDAY" android:textColor="#167B68" android:textSize="10sp" android:letterSpacing="0.15"/>
+ <TextView android:id="@+id/widget_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:textColor="#173E36" android:textSize="18sp" android:textStyle="bold"/>
+ <TextView android:id="@+id/widget_body" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:textColor="#355D53" android:textSize="13sp" android:maxLines="5" android:ellipsize="end"/>
+</LinearLayout>
