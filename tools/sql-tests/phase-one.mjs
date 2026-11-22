@@ -1,5 +1,5 @@
 import { PGlite } from '@electric-sql/pglite';
-import { readFile } from 'node:fs/promises';
+import { readFile,readdir } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 
 const db = new PGlite();
@@ -22,7 +22,7 @@ const denied = async (user, sql, params = []) => {
 };
 try {
   await db.exec(`create role anon; create role authenticated; create role service_role bypassrls;
-    create schema auth; create table auth.users(id uuid primary key);
+    create schema auth; create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz);
     create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
     grant usage on schema auth,public to authenticated,anon,service_role;
     grant execute on function auth.uid() to authenticated,anon,service_role;
@@ -32,7 +32,7 @@ try {
     alter table storage.objects enable row level security;
     grant usage on schema storage to authenticated,anon,service_role;
     grant select,insert on storage.objects to authenticated;`);
-  for (const migration of ['202610300001_empty_mobile_contract.sql', '202610310001_phase_one.sql', '202610310002_learning_and_messages.sql', '202610310003_leadership_and_native.sql','202610310004_alert_actions.sql','202610310005_large_school_pages.sql','202610310006_substitution_scope.sql','202610310007_performance.sql']) {
+  for (const migration of (await readdir(new URL('../../supabase/migrations/',import.meta.url))).filter(n=>n.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(`../../supabase/migrations/${migration}`, import.meta.url), 'utf8'));
   }
   check((await db.query('select count(*)::int n from public.erp_students')).rows[0].n === 0, 'Migration seeds no students');
@@ -167,5 +167,88 @@ try {
   check((await db.query('select public.erp_alert_context($1) data',[emergencyEvent])).rows[0].data.muted,'Disabled device alerts are never dispatched');
   await db.query('update public.school_memberships set active=false where user_id=$1',[teacher]);
   await denied(teacher,'select public.erp_roster($1,$2)',[school,classroom]);
+  await db.exec('reset role');
+  const owner=id(81), newTeacher=id(82), newParent=id(83);
+  for (const [uid,email] of [[owner,'owner@test.invalid'],[newTeacher,'teacher@test.invalid'],[newParent,'parent@test.invalid']])
+    await db.query('insert into auth.users(id,email,email_confirmed_at) values($1,$2,now())',[uid,email]);
+  await db.query('insert into public.erp_platform_owners values($1)',[owner]);
+  const call = async(user,fn,...args) => (await runAs(user,
+    'select public.'+fn+'('+args.map((_,i)=>'$'+(i+1)).join(',')+') as value',args)).rows[0].value;
+  const alpha=await call(owner,'erp_create_school','Alpha School');
+  const beta=await call(owner,'erp_create_school','Beta School');
+  check(alpha.code!==beta.code && /^SCH-\d+$/.test(alpha.code),'Schools receive distinct public IDs');
+  check((await call(owner,'erp_school_context',alpha.id)).platform_owner,'Owner can open a newly created school without a school membership');
+  check((await call(principal,'erp_web_entry')).schools.length===1,'Principal lists only their own school');
+  await denied(principal,"select public.erp_create_school('Unauthorized')");
+  await denied(principal,'select public.erp_school_access($1)',[school]);
+  await denied(principal,'select public.erp_school_context($1)',[beta.id]);
+  await denied(newTeacher,'insert into public.erp_platform_owners values($1)',[newTeacher]);
+  const invite=await call(owner,'erp_issue_enrollment',alpha.id,'teacher@test.invalid','teacher');
+  const activate='select public.erp_accept_enrollment($1,$2,$3)';
+  await denied(newParent,activate,[alpha.code,invite,'Family']);
+  await denied(newTeacher,activate,[beta.code,invite,'Teacher']);
+  await db.exec('reset role');
+  await db.query('update auth.users set email_confirmed_at=null where id=$1',[newTeacher]);
+  await denied(newTeacher,activate,[alpha.code,invite,'Teacher']);
+  await db.exec('reset role');
+  await db.query('update auth.users set email_confirmed_at=now() where id=$1',[newTeacher]);
+  check(await call(newTeacher,'erp_accept_enrollment',alpha.code.toLowerCase(),invite,'Teacher')===alpha.id,'Verified invited teacher joins the correct school');
+  await denied(newTeacher,activate,[alpha.code,invite,'Teacher']);
+  const enroll=async(s,user,email,role,name)=>{
+    const token=await call(owner,'erp_issue_enrollment',s.id,email,role);
+    await call(user,'erp_accept_enrollment',s.code,token,name);
+    return (await call(owner,'erp_school_access',s.id)).members.find(m=>m.user_id===user);
+  };
+  const family=await enroll(alpha,newParent,'parent@test.invalid','parent','Family');
+  await enroll(beta,newTeacher,'teacher@test.invalid','teacher','Teacher');
+  const member=(await call(owner,'erp_school_access',alpha.id)).members.find(m=>m.user_id===newTeacher);
+  const gradeA=await call(owner,'erp_add_roster_record',alpha.id,'A');
+  const gradeB=await call(owner,'erp_add_roster_record',alpha.id,'B');
+  const studentA=await call(owner,'erp_add_roster_record',alpha.id,'Alex',gradeA,'A-1');
+  const studentB=await call(owner,'erp_add_roster_record',alpha.id,'Blair',gradeB,'B-1');
+  await denied(owner,'select public.erp_add_roster_record($1,$2,$3)',[beta.id,'Cross-school student',gradeA]);
+  const assign=(m,target,kind)=>call(owner,'erp_set_assignment',alpha.id,m.id,target,kind);
+  await assign(member,gradeA,'teaching');
+  const directory=await call(newTeacher,'erp_student_directory',alpha.id);
+  check(directory.length===1&&directory[0].id===studentA,'Only students of assigned classes appear');
+  const basic=await call(newTeacher,'erp_student_details',alpha.id,studentA);
+  check(!basic.full_access && !('fees' in basic) && !('guardians' in basic),'Teaching assignment gives a limited register');
+  await denied(newTeacher,'select public.erp_student_details($1,$2)',[alpha.id,studentB]);
+  await assign(family,studentA,'guardian');
+  await db.exec('reset role');
+  await db.query('insert into public.erp_class_students values($1,$2,$3)',[alpha.id,gradeB,studentA]);
+  await db.query("insert into public.school_content(school_id,kind,title,data,visible_to) values($1,'invoice','Tuition',jsonb_build_object('student_id',$2::text),array[$3::uuid])",[alpha.id,studentA,newParent]);
+  check((await runAs(newTeacher,'select class_id from public.erp_class_students where student_id=$1',[studentA])).rows.length===1,'Teaching one class does not reveal the student’s other class memberships');
+  await denied(newTeacher,'select public.erp_workspace($1,$2)',[alpha.id,studentA]);
+  check((await call(newParent,'erp_school_context',alpha.id)).invoices.length===1,'Family workspace includes linked fee statements');
+  await assign(member,gradeA,'homeroom');
+  const detail=await call(newTeacher,'erp_student_details',alpha.id,studentA);
+  check(detail.full_access&&detail.guardians[0].email==='parent@test.invalid','Class teacher sees linked family details');
+  const classes=(await call(newTeacher,'erp_school_context',alpha.id)).classes;
+  check(classes.length===1&&classes[0].homeroom&&classes[0].teachers[0].name==='Teacher','School context contains the assigned homeroom and teaching team');
+  check((await call(newParent,'erp_school_context',alpha.id)).children[0].id===studentA,'Family workspace includes the linked child');
+  await denied(newParent,'select public.erp_student_details($1,$2)',[alpha.id,studentB]);
+  await assign(family,studentA,'remove_guardian');
+  await denied(newParent,'select public.erp_student_details($1,$2)',[alpha.id,studentA]);
+  check(!(await call(newParent,'erp_school_context',alpha.id)).invoices.length,'Unlinking a child removes their invoices even if previously addressed to the parent');
+  await assign(member,gradeA,'teaching');
+  check(!(await call(newTeacher,'erp_student_details',alpha.id,studentA)).full_access,'Removing the homeroom role removes extended detail');
+  await denied(newTeacher,'select public.erp_set_access($1,$2,$3)',[alpha.id,member.id,'grant']);
+  const canceled=await call(owner,'erp_issue_enrollment',alpha.id,'teacher@test.invalid','teacher');
+  await call(owner,'erp_set_access',alpha.id,member.id,'revoke');
+  await denied(newTeacher,activate,[alpha.code,canceled,'Teacher']);
+  await denied(newTeacher,'select public.erp_school_context($1)',[alpha.id]);
+  check((await call(newTeacher,'erp_web_entry')).schools[0].id===beta.id,'Revoking one school preserves the other school');
+  await call(owner,'erp_set_access',alpha.id,member.id,'grant');
+  check((await call(newTeacher,'erp_web_entry')).schools.length===2,'Owner restores an existing membership');
+  await assign(member,gradeA,'remove_teacher');
+  check(!(await call(newTeacher,'erp_student_directory',alpha.id)).length,'Removing the teaching assignment removes roster access');
+  const expired=await call(owner,'erp_issue_enrollment',beta.id,'parent@test.invalid','parent');
+  await db.exec('reset role');
+  await db.query("update public.erp_enrollments set expires_at=now()-interval '1 minute' where school_id=$1",[beta.id]);
+  await denied(newParent,activate,[beta.code,expired,'Family']);
+  const pending=(await call(owner,'erp_school_access',beta.id)).invites[0];
+  await call(owner,'erp_set_access',beta.id,pending.id,'cancel');
+  check(!(await call(owner,'erp_school_access',beta.id)).invites.length,'Owner can cancel an outstanding invitation');
   console.log(`${checks} PostgreSQL contract/permission checks passed. No remote database was used.`);
 } finally { await db.close(); }

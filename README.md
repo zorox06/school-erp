@@ -19,9 +19,9 @@ The build script creates a debug APK for local testing. For a signed release use
 
 ## Shared Supabase backend
 
-Both clients use the public configuration for the shared Supabase project. Its configured hostname failed DNS resolution during the latest verification. All migration files in `supabase/migrations` have been applied, and `dispatch-school-alerts` is deployed. `ENABLE_SCHOOL_DATA=true` enables the real repositories; it does not seed any records. Public client configuration is in `config/build.public.json`. School names, identities and business figures remain null until actual records exist; collections are empty.
+Both clients use the public configuration for the shared Supabase project in `config/build.public.json`. The configured Auth health endpoint returned HTTP 200 on November 22, 2026. The mobile repository owns the database migrations. Apply `202611220001_school_access.sql` to the intended database before releasing the new web client. `ENABLE_SCHOOL_DATA=true` enables the real repositories. Each school supplies its own records.
 
-Create real accounts through trusted Supabase administration, then link profiles, active school memberships, classes, students, guardians and teacher assignments. The app cannot self-assign privileges. A valid account without a membership sees the school-access gate. No account or password has been invented for this delivery.
+The platform owner registers each school and invites individual verified accounts using the web administration workspace. Principals or the owner enrol students. The owner assigns teachers and class teachers, links children to families, and revokes or restores access per school. The mobile client uses the same memberships and opens its default active school. Accounts without an active membership see the school-access gate. See the [web onboarding instructions](https://github.com/zorox06/school-erp-web#open-the-first-school).
 
 The private `school-files` bucket accepts JPEG/PNG/PDF up to 10 MB. Every upload first reserves an authorized asset, then verifies storage metadata. Downloads require signed access and server authorization. The client contains no secret/service-role key. Rotate privileged keys previously shared in chat before a real school rollout.
 
