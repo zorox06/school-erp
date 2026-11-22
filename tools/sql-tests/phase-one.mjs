@@ -22,7 +22,7 @@ const denied = async (user, sql, params = []) => {
 };
 try {
   await db.exec(`create role anon; create role authenticated; create role service_role bypassrls;
-    create schema auth; create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz);
+    create schema auth; create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz,last_sign_in_at timestamptz);
     create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
     grant usage on schema auth,public to authenticated,anon,service_role;
     grant execute on function auth.uid() to authenticated,anon,service_role;
@@ -250,5 +250,21 @@ try {
   const pending=(await call(owner,'erp_school_access',beta.id)).invites[0];
   await call(owner,'erp_set_access',beta.id,pending.id,'cancel');
   check(!(await call(owner,'erp_school_access',beta.id)).invites.length,'Owner can cancel an outstanding invitation');
+  await denied(principal,'select public.erp_platform_overview()');
+  await denied(newTeacher,'select public.erp_platform_school($1)',[alpha.id]);
+  await db.exec('reset role');
+  await db.query("update auth.users set last_sign_in_at=now() where id=$1",[owner]);
+  await db.query(`insert into public.erp_notification_outbox(school_id,user_id,category,dedupe_key,attempts,last_error)
+    values($1,$2,'emergency','platform-test-exhausted',10,'delivery_retry')`,[alpha.id,newParent]);
+  const ops=await call(owner,'erp_platform_overview');
+  check(ops.accounts.signed_in_24h===1 && ops.owner_accounts===1,'Operations counts actual Auth activity');
+  check(ops.schools.length===4 && ops.schools.find(s=>s.id===alpha.id).students===2,'Operations counts schools across memberships and distinct student records');
+  check(ops.active_members===7,'Active accounts are counted once across multiple schools');
+  const alphaOps=ops.schools.find(s=>s.id===alpha.id);
+  check(alphaOps.unassigned_teachers===1 && alphaOps.unlinked_families===1,'Operations identifies missing class and child links');
+  check(alphaOps.exhausted_notifications===1 && ops.notifications.exhausted===1,'System counts notifications that exhausted their retries');
+  check(ops.recent_activity.some(event=>event.action==='access.revoke') && ops.recent_activity.every(event=>!event.entity_id),'Recent access activity excludes member identifiers');
+  const setup=await call(owner,'erp_platform_school',alpha.id);
+  check(setup.classes.length===2 && !('homework' in setup) && !('invoices' in setup),'School setup loads class metadata without the academic workspace');
   console.log(`${checks} PostgreSQL contract/permission checks passed. No remote database was used.`);
 } finally { await db.close(); }
