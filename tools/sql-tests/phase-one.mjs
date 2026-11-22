@@ -178,6 +178,10 @@ try {
   const beta=await call(owner,'erp_create_school','Beta School');
   check(alpha.code!==beta.code && /^SCH-\d+$/.test(alpha.code),'Schools receive distinct public IDs');
   check((await call(owner,'erp_school_context',alpha.id)).platform_owner,'Owner can open a newly created school without a school membership');
+  const ownerMobile = await call(owner, 'mobile_context');
+  check(ownerMobile.role === 'admin' && ownerMobile.platform_owner, 'Platform owner opens a school on mobile without a membership');
+  check(ownerMobile.school_id === (await call(owner, 'erp_web_entry')).schools[0].id, 'Mobile owner defaults to the first school in the web directory');
+  check((await call(newTeacher, 'mobile_context')).school_id === null, 'An account without access has no mobile school');
   check((await call(principal,'erp_web_entry')).schools.length===1,'Principal lists only their own school');
   await denied(principal,"select public.erp_create_school('Unauthorized')");
   await denied(principal,'select public.erp_school_access($1)',[school]);
@@ -226,6 +230,10 @@ try {
   check(detail.full_access&&detail.guardians[0].email==='parent@test.invalid','Class teacher sees linked family details');
   const classes=(await call(newTeacher,'erp_school_context',alpha.id)).classes;
   check(classes.length===1&&classes[0].homeroom&&classes[0].teachers[0].name==='Teacher','School context contains the assigned homeroom and teaching team');
+  const teacherMobile = await call(newTeacher, 'mobile_context');
+  const teacherWeb = await call(newTeacher, 'erp_school_context', teacherMobile.school_id);
+  check(teacherMobile.role === 'teacher' && teacherMobile.school_code === teacherWeb.school_code, 'Mobile and web resolve the same role and school for the default membership');
+  assert.deepEqual(teacherMobile.classes, teacherWeb.classes, 'Mobile and web return the same class assignments');
   check((await call(newParent,'erp_school_context',alpha.id)).children[0].id===studentA,'Family workspace includes the linked child');
   await denied(newParent,'select public.erp_student_details($1,$2)',[alpha.id,studentB]);
   await assign(family,studentA,'remove_guardian');
@@ -239,6 +247,7 @@ try {
   await denied(newTeacher,activate,[alpha.code,canceled,'Teacher']);
   await denied(newTeacher,'select public.erp_school_context($1)',[alpha.id]);
   check((await call(newTeacher,'erp_web_entry')).schools[0].id===beta.id,'Revoking one school preserves the other school');
+  check((await call(newTeacher, 'mobile_context')).school_id === beta.id, 'Mobile falls back to the other school after revocation');
   await call(owner,'erp_set_access',alpha.id,member.id,'grant');
   check((await call(newTeacher,'erp_web_entry')).schools.length===2,'Owner restores an existing membership');
   await assign(member,gradeA,'remove_teacher');
