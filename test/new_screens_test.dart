@@ -29,8 +29,7 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      final c = await makeController();
-      c.enterPreview(Workspace.principal);
+      final c = await makeController(role: Workspace.principal);
       await tester.pumpWidget(SchooldayApp(controller: c));
       await tester.pumpAndSettle();
       final ctx = tester.element(find.byType(Navigator).first);

@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../data.dart';
 import 'store.dart';
 
-/// Context is cached per authenticated user, never shared with preview/accounts.
+/// Context is cached per authenticated user, isolated between accounts.
 class CachedSchoolRepository implements SchoolRepository {
   final SchoolRepository remote;
   final String? Function() owner;

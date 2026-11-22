@@ -263,11 +263,9 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool get accessAssigned =>
-      preview ||
-      (liveDataEnabled
-          ? _snapshot.schoolId != null && _snapshot.role != null
-          : _snapshot.role != null || auth.assignedWorkspace != null);
+  bool get accessAssigned => liveDataEnabled
+      ? _snapshot.schoolId != null && _snapshot.role != null
+      : _snapshot.role != null || auth.assignedWorkspace != null;
   final AuthRepository auth;
   final SchoolRepository repository;
   final bool liveDataEnabled;
@@ -301,10 +299,7 @@ class AppController extends ChangeNotifier {
   }
 
   Workspace workspace = Workspace.parent;
-  bool preview = false,
-      loading = false,
-      notificationsEnabled = false,
-      compactView = false;
+  bool loading = false, notificationsEnabled = false, compactView = false;
   String? loadError, selectedChildId, selectedClassId;
   StreamSubscription<bool>? _subscription;
   SharedPreferences? _preferences;
@@ -316,7 +311,7 @@ class AppController extends ChangeNotifier {
     this.onLeaving,
     this.updatePush,
   });
-  bool get entered => preview || auth.signedIn;
+  bool get entered => auth.signedIn;
   List<SchoolRecord> learningItems(bool worksheet) {
     if (features == null) {
       return worksheet ? snapshot.worksheets : snapshot.homework;
@@ -350,7 +345,6 @@ class AppController extends ChangeNotifier {
             )
             .toList();
   bool get canWrite =>
-      !preview &&
       auth.signedIn &&
       liveDataEnabled &&
       snapshot.schoolId != null &&
@@ -361,6 +355,7 @@ class AppController extends ChangeNotifier {
         _preferences?.getBool('notification_preference') ?? false;
     compactView = _preferences?.getBool('compact_view') ?? false;
     _subscription = auth.changes.listen((active) async {
+      if (_disposed) return;
       if (!active) {
         _refreshVersion++;
         final old = phaseOne;
@@ -371,13 +366,12 @@ class AppController extends ChangeNotifier {
         phaseOne = null;
         await old?.close(purge: true);
         if (!signingOut) await onLeaving?.call(old?.owner);
+        if (_disposed || auth.signedIn) return;
         snapshot = const SchoolSnapshot();
         selectedChildId = null;
         selectedClassId = null;
-        preview = false;
         notifyListeners();
       } else {
-        preview = false;
         await refresh();
       }
     });
@@ -385,11 +379,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> refresh() async {
-    if (preview) {
-      snapshot = const SchoolSnapshot();
-      notifyListeners();
-      return;
-    }
+    if (!auth.signedIn || signingOut) return;
     loading = true;
     final version = ++_refreshVersion;
     final owner = auth.userId;
@@ -397,10 +387,7 @@ class AppController extends ChangeNotifier {
     notifyListeners();
     try {
       final loaded = await repository.load();
-      if (_disposed ||
-          version != _refreshVersion ||
-          owner != auth.userId ||
-          preview) {
+      if (_disposed || version != _refreshVersion || owner != auth.userId) {
         return;
       }
       final previousSchool = _snapshot.schoolId;
@@ -430,10 +417,7 @@ class AppController extends ChangeNotifier {
           snapshot.schoolId!,
           workspace,
         );
-        if (_disposed ||
-            version != _refreshVersion ||
-            owner != auth.userId ||
-            preview) {
+        if (_disposed || version != _refreshVersion || owner != auth.userId) {
           await created.close(purge: true);
           return;
         }
@@ -492,18 +476,6 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  void enterPreview(Workspace role) {
-    if (auth.signedIn) throw StateError('Sign out before entering preview');
-    _refreshVersion++;
-    preview = true;
-    workspace = role;
-    snapshot = const SchoolSnapshot();
-    selectedChildId = null;
-    selectedClassId = null;
-    loadError = null;
-    notifyListeners();
-  }
-
   VoidCallback? onChildChanged;
   void chooseChild(String id) {
     if (id == selectedChildId) return;
@@ -521,20 +493,13 @@ class AppController extends ChangeNotifier {
 
   Future<void> setNotifications(bool value) async {
     if (notificationsBusy) return;
-    if (preview) {
-      pushStatus = 'Preview does not register a device or request notification permission.';
-      notificationsEnabled = false;
-      notifyListeners();
-      return;
-    }
     notificationsBusy = true;
     notifyListeners();
     try {
       pushStatus = updatePush == null
           ? 'Device alerts are not configured.'
           : await updatePush!(value);
-      notificationsEnabled = value && pushStatus == null && !preview;
-      if (preview) pushStatus = 'Preview does not register a device or request notification permission.';
+      notificationsEnabled = value && pushStatus == null;
       await features?.savePreferences({'enabled': notificationsEnabled});
       await _preferences?.setBool(
         'notification_preference',
@@ -567,8 +532,7 @@ class AppController extends ChangeNotifier {
       phaseOne = null;
       await old?.close(purge: true);
       await onLeaving?.call(auth.userId);
-      if (!preview) await auth.signOut();
-      preview = false;
+      if (auth.signedIn) await auth.signOut();
       snapshot = const SchoolSnapshot();
       selectedChildId = null;
       selectedClassId = null;

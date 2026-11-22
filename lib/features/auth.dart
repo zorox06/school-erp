@@ -191,19 +191,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 25),
-                    const Divider(),
-                    const SizedBox(height: 9),
-                    TextButton(
-                      key: const Key('open-preview'),
-                      onPressed: () => showWorkspacePreview(context),
-                      child: const Text('Preview the empty app'),
-                    ),
-                    Text(
-                      'No accounts or school records are needed to explore.',
-                      textAlign: TextAlign.center,
-                      style: textStyle(10, color: Palette.muted),
-                    ),
                     const SizedBox(height: 18),
                   ],
                 ),
@@ -318,56 +305,6 @@ class WelcomeArt extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    ),
-  );
-}
-
-Future<void> showWorkspacePreview(BuildContext context) {
-  final controller = AppScope.of(context);
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    builder: (sheet) => SafeArea(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(sheet).height * .85,
-        ),
-        child: ListView(
-          shrinkWrap: true,
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 28),
-          children: [
-            Text(
-              'Take a look around.',
-              style: textStyle(24, weight: FontWeight.w800),
-            ),
-            const SizedBox(height: 9),
-            Text(
-              'Explore an empty workspace. Preview never signs you in, loads school records or grants account permissions.',
-              style: textStyle(13, color: Palette.muted),
-            ),
-            const SizedBox(height: 22),
-            for (final role in Workspace.values)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Surface(
-                  key: Key('preview-${role.name}'),
-                  onTap: () {
-                    Navigator.pop(sheet);
-                    controller.enterPreview(role);
-                  },
-                  child: SettingRow(
-                    role.isStaff
-                        ? LucideIcons.graduationCap
-                        : LucideIcons.userRound,
-                    '${role.label} workspace',
-                    subtitle: 'Empty interface preview',
-                  ),
-                ),
-              ),
-          ],
-        ),
       ),
     ),
   );

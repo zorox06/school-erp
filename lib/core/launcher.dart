@@ -47,8 +47,7 @@ class SchoolLauncher {
       do {
         _dirty = false;
         final c = controller;
-        final identity =
-            c.entered && !c.preview && !c.signingOut && c.accessAssigned
+        final identity = c.entered && !c.signingOut && c.accessAssigned
             ? '${c.auth.userId}/${c.snapshot.schoolId}/${c.workspace.name}/${c.selectedChildId}'
             : null;
         if (identity != _identity) {

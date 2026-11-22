@@ -8,7 +8,6 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../core/data.dart';
 import '../core/theme.dart';
 import '../ui/components.dart';
-import 'auth.dart';
 import 'learning.dart';
 import 'notices.dart';
 
@@ -37,15 +36,11 @@ class AccountScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      c.preview
-                          ? 'Exploring an empty workspace'
-                          : c.auth.email ?? '—',
+                      c.auth.email ?? '—',
                       style: textStyle(11, color: Palette.muted),
                     ),
                     const SizedBox(height: 9),
-                    Tag(
-                      '${c.workspace.name.toUpperCase()}${c.preview ? ' PREVIEW' : ''}',
-                    ),
+                    Tag(c.workspace.name.toUpperCase()),
                   ],
                 ),
               ),
@@ -185,17 +180,6 @@ class AccountScreen extends StatelessWidget {
             ],
           ),
         ),
-        if (c.preview) ...[
-          const SizedBox(height: 20),
-          OutlinedButton.icon(
-            onPressed: () {
-              Navigator.of(context).popUntil((r) => r.isFirst);
-              showWorkspacePreview(context);
-            },
-            icon: const Icon(LucideIcons.arrowLeftRight, size: 17),
-            label: const Text('Switch preview workspace'),
-          ),
-        ],
         const SizedBox(height: 20),
         OutlinedButton.icon(
           onPressed: () async {
@@ -213,7 +197,7 @@ class AccountScreen extends StatelessWidget {
             }
           },
           icon: const Icon(LucideIcons.logOut, size: 17),
-          label: Text(c.preview ? 'Leave preview' : 'Sign out'),
+          label: const Text('Sign out'),
         ),
         const SizedBox(height: 23),
         Center(
@@ -332,11 +316,6 @@ class PrivacyScreen extends StatelessWidget {
       _HelpCard(
         'Your family’s information',
         'Parents should see only their linked children. School access and teacher permissions are managed by your school.',
-      ),
-      SizedBox(height: 12),
-      _HelpCard(
-        'Preview mode',
-        'Preview lets you explore the app without opening or changing school records.',
       ),
       SizedBox(height: 12),
       _HelpCard(

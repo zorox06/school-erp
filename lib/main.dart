@@ -67,7 +67,6 @@ Future<void> main() async {
       await Supabase.initialize(url: url, publishableKey: key);
       client = Supabase.instance.client;
     } catch (_) {
-      // The empty preview remains usable when initialization is unavailable.
       // Never log credentials or ship an administrative key in this client.
     }
   }
@@ -104,9 +103,7 @@ Future<void> main() async {
           )
         : remote,
     liveDataEnabled: live,
-    updatePush: (enabled) async => controller.preview
-        ? 'Preview does not register a device or request permission.'
-        : await push.setEnabled(enabled),
+    updatePush: (enabled) => push.setEnabled(enabled),
     onLeaving: (leavingOwner) async {
       alerts?.clear();
       await push.disable();
@@ -144,13 +141,10 @@ Future<void> main() async {
   alerts = SchoolAlertRouter(
     ready: () =>
         controller.entered &&
-        !controller.preview &&
         !controller.signingOut &&
         controller.features != null,
     dispatch: (message) async {
-      if (!controller.entered ||
-          controller.preview ||
-          controller.features == null) {
+      if (!controller.entered || controller.features == null) {
         return;
       }
       if (message['school_id'] != null &&
@@ -235,10 +229,7 @@ Future<void> main() async {
   };
   launcher = SchoolLauncher(controller, (type) {
     final ctx = schoolNavigator.currentContext;
-    if (ctx == null ||
-        !controller.entered ||
-        controller.preview ||
-        !controller.accessAssigned) {
+    if (ctx == null || !controller.entered || !controller.accessAssigned) {
       return;
     }
     if (type == 'attendance' && controller.workspace.canMarkAttendance) {

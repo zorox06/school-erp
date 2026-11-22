@@ -28,7 +28,7 @@ class DashboardScreen extends StatelessWidget {
         : 'Good evening';
     final name = c.snapshot.displayName;
     final data = c.snapshot;
-    final ready = !c.preview && c.snapshot.schoolId != null;
+    final ready = c.snapshot.schoolId != null;
     final now = DateTime.now();
     final upcoming =
         c.timetableItems

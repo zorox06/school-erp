@@ -48,10 +48,13 @@ class ObservedRepository implements SchoolRepository {
   }
 }
 
-Future<AppController> makeController({SchoolRepository? repository}) async {
+Future<AppController> makeController({
+  SchoolRepository? repository,
+  Workspace? role,
+}) async {
   SharedPreferences.setMockInitialValues({});
   final c = AppController(
-    auth: TestAuth(),
+    auth: TestAuth(assignedWorkspace: role)..active = role != null,
     repository: repository ?? const EmptySchoolRepository(),
   );
   await c.initialize();
@@ -91,14 +94,12 @@ void main() {
     },
   );
 
-  test('preview never reads remote records and cannot write', () async {
+  test('signed-out state cannot read school records or write', () async {
     final repository = ObservedRepository();
     final c = await makeController(repository: repository);
-    c.enterPreview(Workspace.teacher);
     await c.refresh();
-    expect(c.entered, isTrue);
+    expect(c.entered, isFalse);
     expect(c.canWrite, isFalse);
-    expect(c.workspace, Workspace.teacher);
     expect(repository.reads, 0);
     expect(repository.writes, 0);
     await c.leave();
@@ -110,8 +111,7 @@ void main() {
   test(
     'leaving a workspace clears identity and selected child state',
     () async {
-      final c = await makeController();
-      c.enterPreview(Workspace.parent);
+      final c = await makeController(role: Workspace.parent);
       c.chooseChild('selected-by-user');
       await c.leave();
       expect(c.selectedChildId, isNull);
@@ -158,8 +158,7 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    final c = await makeController();
-    c.enterPreview(Workspace.parent);
+    final c = await makeController(role: Workspace.parent);
     await tester.pumpWidget(SchooldayApp(controller: c));
     await tester.pumpAndSettle();
     expect(find.text('No child linked yet'), findsOneWidget);
@@ -187,8 +186,7 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      final c = await makeController();
-      c.enterPreview(Workspace.teacher);
+      final c = await makeController(role: Workspace.teacher);
       await tester.pumpWidget(SchooldayApp(controller: c));
       await tester.pumpAndSettle();
       for (final key in [
@@ -214,8 +212,7 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    final c = await makeController();
-    c.enterPreview(Workspace.parent);
+    final c = await makeController(role: Workspace.parent);
     await tester.pumpWidget(
       MediaQuery(
         data: const MediaQueryData(textScaler: TextScaler.linear(1.5)),

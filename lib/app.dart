@@ -74,11 +74,7 @@ class SchooldayApp extends StatelessWidget {
                 ),
               )
             : controller.entered
-            ? MainShell(
-                key: ValueKey(
-                  '${controller.preview}-${controller.workspace.name}',
-                ),
-              )
+            ? MainShell(key: ValueKey(controller.workspace))
             : const LoginScreen(),
       ),
     ),
@@ -111,7 +107,6 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         .getInheritedWidgetOfExactType<AppScope>()!
         .notifier!;
     if (controller.auth.signedIn &&
-        !controller.preview &&
         !controller.loading &&
         !controller.signingOut) {
       controller.refresh();
@@ -221,10 +216,6 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                               ),
                               if (!teacher && c.snapshot.children.isNotEmpty)
                                 const ChildAvatar(),
-                              if (c.preview) ...[
-                                const SizedBox(width: 10),
-                                const Tag('PREVIEW'),
-                              ],
                               IconButton(
                                 tooltip: 'Notifications',
                                 onPressed: () => openPage(

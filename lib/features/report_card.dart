@@ -46,7 +46,7 @@ class _ReportLockState extends State<ReportLock> with WidgetsBindingObserver {
 
   Future<void> unlock() async {
     final c = AppScope.of(context);
-    if (c.preview || c.features == null || c.selectedChildId == null) {
+    if (c.features == null || c.selectedChildId == null) {
       setState(
         () =>
             error = 'Sign in and select a linked child to view a report card.',

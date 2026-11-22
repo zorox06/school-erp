@@ -59,8 +59,7 @@ void main() {
     testWidgets('${role.name} Homework shortcut opens teaching workspace', (
       tester,
     ) async {
-      final c = await makeController();
-      c.enterPreview(role);
+      final c = await makeController(role: role);
       await tester.pumpWidget(SchooldayApp(controller: c));
       await tester.pumpAndSettle();
       final homework = find.text('Homework').hitTestable();

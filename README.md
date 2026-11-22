@@ -15,11 +15,13 @@ flutter run --dart-define-from-file=config/supabase.local.json
 .\build-desktop.ps1
 ```
 
-The build script creates a debug APK for local testing. For a signed release use `./build-desktop.ps1 -Release`. Configure the ignored `android/key.properties` with `storeFile` (absolute path or relative to the android directory), `storePassword`, `keyAlias` and `keyPassword`. Release packaging requires all four settings and a private keystore.
+The build script creates `Schoolday-profile.apk` on the desktop for testing on ARM64 Android phones. Use `-Debug` when you need a debug APK. Use `-TargetPlatform android-arm` for a 32-bit ARM device or `-TargetPlatform android-x64` for an x86-64 device.
+
+For distribution, use `./build-desktop.ps1 -AppBundle` for Google Play or `./build-desktop.ps1 -Release` for a signed APK. Configure the ignored `android/key.properties` with `storeFile` (absolute path or relative to the android directory), `storePassword`, `keyAlias` and `keyPassword`. Release packaging requires all four settings and a private keystore.
 
 ## Shared Supabase backend
 
-Both clients use the public configuration for the shared Supabase project in `config/build.public.json`. The configured Auth health endpoint returned HTTP 200 on November 22, 2026. The mobile repository owns the database migrations. Apply `202611220001_school_access.sql` to the intended database before releasing the new web client. `ENABLE_SCHOOL_DATA=true` enables the real repositories. Each school supplies its own records.
+Both MVP clients use the shared **Schoolday MVP** Supabase project in South Asia (Mumbai). Copy `config/build.public.json` to the ignored local build configuration before rebuilding an APK that used the previous project. The mobile repository owns the database migrations. The Mumbai project has all migrations through `202611220001_school_access.sql`. `ENABLE_SCHOOL_DATA=true` enables the real repositories. Each school supplies its own records.
 
 The platform owner registers each school and invites individual verified accounts using the web administration workspace. Principals or the owner enrol students. The owner assigns teachers and class teachers, links children to families, and revokes or restores access per school. The mobile client uses the same memberships and opens its default active school. Accounts without an active membership see the school-access gate. See the [web onboarding instructions](https://github.com/zorox06/school-erp-web#open-the-first-school).
 
