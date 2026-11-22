@@ -48,13 +48,22 @@ class SchooldayApp extends StatelessWidget {
                       'Your account is signed in.',
                       eyebrow: 'School access',
                     ),
-                    const EmptyPanel(
-                      icon: LucideIcons.shieldCheck,
-                      title: 'Waiting for school access',
-                      message: 'Your school must assign your account a role and link its records. You cannot choose your own permissions.',
-                    ),
+                    if (controller.loading)
+                      const LinearProgressIndicator()
+                    else if (controller.loadError != null)
+                      EmptyPanel(
+                        icon: LucideIcons.cloudOff,
+                        title: 'School workspace unavailable',
+                        message: controller.loadError!,
+                      )
+                    else
+                      const EmptyPanel(
+                        icon: LucideIcons.shieldCheck,
+                        title: 'Waiting for school access',
+                        message: 'Your school must assign your account a role and link its records. You cannot choose your own permissions.',
+                      ),
                     OutlinedButton(
-                      onPressed: controller.refresh,
+                      onPressed: controller.loading ? null : controller.refresh,
                       child: const Text('Check school access'),
                     ),
                     TextButton(
@@ -82,7 +91,33 @@ class MainShell extends StatefulWidget {
   State<MainShell> createState() => _MainShellState();
 }
 
-class _MainShellState extends State<MainShell> {
+class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !mounted) return;
+    final controller = context
+        .getInheritedWidgetOfExactType<AppScope>()!
+        .notifier!;
+    if (controller.auth.signedIn &&
+        !controller.preview &&
+        !controller.loading &&
+        !controller.signingOut) {
+      controller.refresh();
+    }
+  }
+
   int _index = 0;
   @override
   Widget build(BuildContext context) {

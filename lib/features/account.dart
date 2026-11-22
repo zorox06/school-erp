@@ -283,7 +283,7 @@ class HelpScreen extends StatelessWidget {
       EmptyPanel(
         icon: LucideIcons.heartHandshake,
         title: 'Your school is here to help.',
-        message: 'For account access, child links, class assignments or fee questions, please contact your school office. Contact details will appear when your school connects your account.',
+        message: 'For account access, child links, class assignments or fee questions, please contact your school office. Use the office contact details provided by your school.',
       ),
       SizedBox(height: 22),
       _HelpCard(
@@ -335,18 +335,18 @@ class PrivacyScreen extends StatelessWidget {
       ),
       SizedBox(height: 12),
       _HelpCard(
-        'This empty build',
-        'No student names, school records, payment details or conversations are included. Preview mode does not create an account or save school records.',
+        'Preview mode',
+        'Preview lets you explore the app without opening or changing school records.',
       ),
       SizedBox(height: 12),
       _HelpCard(
         'When you sign in',
-        'Your account email and authentication session are processed by the configured account service. School records remain disabled in this build. Display preferences are saved on your device.',
+        'Your account email and authentication session are processed by the configured account service. Your school assigns account access. The app caches records and queued changes on this device for offline use.',
       ),
       SizedBox(height: 12),
       _HelpCard(
-        'Files stay yours',
-        'Choosing an attachment does not upload it. This build does not send files until a secure school upload service is enabled.',
+        'Homework attachments',
+        'When you publish or submit work, the app uploads selected files to private school storage. Offline submissions wait for a connection.',
       ),
       SizedBox(height: 12),
       _HelpCard(
@@ -377,15 +377,12 @@ class AboutScreen extends StatelessWidget {
         style: textStyle(14, color: Palette.muted, height: 1.8),
       ),
       const SizedBox(height: 25),
-      const InfoBanner(
-        'Version 1.0.0 · Empty workspace build\nDesigned for school. Made for real life.',
-      ),
+
       const SizedBox(height: 23),
       TextButton(
         onPressed: () => showLicensePage(
           context: context,
           applicationName: 'Schoolday',
-          applicationVersion: '1.0.0',
           applicationLegalese: 'Built with Flutter. Manrope font licensed under the SIL Open Font License.',
         ),
         child: const Text('Open-source licenses'),

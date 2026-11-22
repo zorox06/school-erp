@@ -264,7 +264,10 @@ class AppController extends ChangeNotifier {
   }
 
   bool get accessAssigned =>
-      preview || snapshot.role != null || auth.assignedWorkspace != null;
+      preview ||
+      (liveDataEnabled
+          ? _snapshot.schoolId != null && _snapshot.role != null
+          : _snapshot.role != null || auth.assignedWorkspace != null);
   final AuthRepository auth;
   final SchoolRepository repository;
   final bool liveDataEnabled;
@@ -400,6 +403,9 @@ class AppController extends ChangeNotifier {
           preview) {
         return;
       }
+      final previousSchool = _snapshot.schoolId;
+      final previousRole = _snapshot.role;
+      final previousChild = selectedChildId;
       snapshot = loaded;
       workspace = snapshot.role ?? auth.assignedWorkspace ?? Workspace.parent;
       if (phaseOne != null &&
@@ -436,6 +442,12 @@ class AppController extends ChangeNotifier {
       selectedChildId = snapshot.children.any((e) => e.id == selectedChildId)
           ? selectedChildId
           : snapshot.children.firstOrNull?.id;
+      if (previousSchool != null &&
+          (previousSchool != loaded.schoolId ||
+              previousRole != loaded.role ||
+              previousChild != selectedChildId)) {
+        onChildChanged?.call();
+      }
       selectedClassId = snapshot.classes.any((e) => e.id == selectedClassId)
           ? selectedClassId
           : snapshot.classes.firstOrNull?.id;
@@ -459,6 +471,7 @@ class AppController extends ChangeNotifier {
       if (e is AuthException ||
           (e is PostgrestException &&
               ['42501', 'PGRST301', 'PGRST302'].contains(e.code))) {
+        onChildChanged?.call();
         snapshot = const SchoolSnapshot();
         selectedChildId = null;
         selectedClassId = null;

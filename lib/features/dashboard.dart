@@ -8,6 +8,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../core/data.dart';
 import '../core/theme.dart';
+import '../core/fees.dart';
 import '../ui/components.dart';
 import 'learning.dart';
 import 'school.dart';
@@ -27,6 +28,25 @@ class DashboardScreen extends StatelessWidget {
         : 'Good evening';
     final name = c.snapshot.displayName;
     final data = c.snapshot;
+    final ready = !c.preview && c.snapshot.schoolId != null;
+    final now = DateTime.now();
+    final upcoming =
+        c.timetableItems
+            .where(
+              (r) =>
+                  r.date != null &&
+                  !r.date!.isBefore(now) &&
+                  DateUtils.isSameDay(r.date!.toLocal(), now),
+            )
+            .toList()
+          ..sort((a, b) => a.date!.compareTo(b.date!));
+    final review = c.features
+        ?.rows('submissions')
+        .where((r) => r['feedback'] == null)
+        .length;
+    final lessonCount = c.timetableItems
+        .where((r) => DateUtils.isSameDay(r.date?.toLocal(), now))
+        .length;
     final gap = c.compactView ? 14.0 : 22.0;
     final actions = teacher
         ? <(IconData, String, Color, Color, VoidCallback)>[
@@ -42,7 +62,9 @@ class DashboardScreen extends StatelessWidget {
               'Homework',
               Palette.blue,
               Palette.blueWash,
-              () => onNavigate(2),
+              () => c.workspace.isLeadership
+                  ? openPage(context, const LearningPage(teacher: true))
+                  : onNavigate(2),
             ),
             (
               LucideIcons.users,
@@ -127,11 +149,15 @@ class DashboardScreen extends StatelessWidget {
           name == null ? '$greeting.' : '$greeting, $name.',
           eyebrow:
               '${c.workspace.label} workspace · ${DateFormat('EEE, d MMM').format(DateTime.now())}',
-          subtitle: teacher
-              ? 'A little space for a great school day.'
-              : 'The little things. All in one place.',
         ),
-        if (c.workspace == Workspace.parent) ...[SizedBox(height: gap)],
+        if (c.workspace.isLeadership) ...[
+          PrimaryButton(
+            'Principal overview',
+            icon: LucideIcons.school,
+            onPressed: () => openPage(context, const LeadershipScreen()),
+          ),
+          SizedBox(height: gap),
+        ],
         if (teacher) ...[
           PrimaryButton(
             'Mark attendance',
@@ -141,7 +167,7 @@ class DashboardScreen extends StatelessWidget {
           ),
           const SizedBox(height: 16),
         ],
-        DaySummary(teacher: teacher),
+
         SizedBox(height: gap),
         Row(
           children: [
@@ -149,10 +175,10 @@ class DashboardScreen extends StatelessWidget {
               child: _StatCard(
                 icon: teacher ? LucideIcons.users : LucideIcons.bookOpen,
                 label: teacher ? 'Your classes' : 'Homework',
-                value: (teacher ? data.classes : data.homework).isEmpty
-                    ? null
-                    : '${(teacher ? data.classes : data.homework).length}',
-                onTap: () => onNavigate(teacher ? 1 : 1),
+                value: ready
+                    ? '${teacher ? data.classes.length : c.learningItems(false).length}'
+                    : null,
+                onTap: () => onNavigate(1),
               ),
             ),
             const SizedBox(width: 12),
@@ -166,21 +192,23 @@ class DashboardScreen extends StatelessWidget {
                 label: teacher
                     ? 'To review'
                     : c.workspace == Workspace.student
-                    ? 'Timetable'
-                    : 'Fees due',
-                value: null,
-                onTap: () => onNavigate(teacher ? 2 : 4),
+                    ? 'Lessons today'
+                    : 'Open statements',
+                value: !ready
+                    ? null
+                    : teacher
+                    ? review?.toString()
+                    : c.workspace == Workspace.student
+                    ? '$lessonCount'
+                    : '${data.invoices.where((r) => !feeClosed(r)).length}',
+                onTap: () => teacher
+                    ? openPage(context, const ReviewSubmissionsScreen())
+                    : onNavigate(4),
               ),
             ),
           ],
         ),
         SizedBox(height: gap),
-        if (c.workspace.isLeadership)
-          PrimaryButton(
-            'Principal overview',
-            icon: LucideIcons.school,
-            onPressed: () => openPage(context, const LeadershipScreen()),
-          ),
         if (teacher)
           OutlinedButton.icon(
             onPressed: () => openPage(context, const AcademicsScreen()),
@@ -188,6 +216,20 @@ class DashboardScreen extends StatelessWidget {
             label: const Text('Marks & exams'),
           ),
 
+        if (upcoming.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          const SectionHeading('Coming up today'),
+          ...upcoming
+              .take(3)
+              .map(
+                (r) => RecordTile(
+                  r,
+                  icon: LucideIcons.calendarDays,
+                  onTap: () =>
+                      openPage(context, const LearningPage(initial: 2)),
+                ),
+              ),
+        ],
         const SectionHeading('Your daily essentials'),
         const SizedBox(height: 14),
         LayoutBuilder(
@@ -233,19 +275,6 @@ class DashboardScreen extends StatelessWidget {
         ),
         SizedBox(height: gap),
         const WhatsNew(),
-        if (c.timetableItems.isNotEmpty) ...[
-          const SizedBox(height: 18),
-          const SectionHeading('Coming up today'),
-          ...c.timetableItems
-              .take(3)
-              .map(
-                (r) => RecordTile(
-                  r,
-                  icon: LucideIcons.calendarDays,
-                  onTap: () => onNavigate(teacher ? 4 : 1),
-                ),
-              ),
-        ],
         const SizedBox(height: 18),
         Center(
           child: Text(
@@ -333,104 +362,6 @@ Future<void> showChildSelector(BuildContext context) {
               ),
           ],
         ),
-      ),
-    ),
-  );
-}
-
-class DaySummary extends StatelessWidget {
-  final bool teacher;
-  const DaySummary({super.key, required this.teacher});
-  @override
-  Widget build(BuildContext context) => ClipRRect(
-    borderRadius: BorderRadius.circular(25),
-    child: Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Palette.teal, Palette.forest],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            right: -32,
-            top: -58,
-            child: Container(
-              width: 174,
-              height: 174,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white.withValues(alpha: .1)),
-              ),
-            ),
-          ),
-          Positioned(
-            right: 19,
-            bottom: -12,
-            child: Transform.rotate(
-              angle: -.35,
-              child: Icon(
-                LucideIcons.sprout,
-                size: 106,
-                color: Colors.white.withValues(alpha: .08),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(23),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFDCE9B5),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 7),
-                    Expanded(
-                      child: Text(
-                        teacher
-                            ? 'YOUR DAY, AT A GLANCE'
-                            : 'SCHOOL & HOME, TOGETHER',
-                        style: textStyle(
-                          9,
-                          weight: FontWeight.w800,
-                          color: const Color(0xFFCAE3D6),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  teacher
-                      ? 'More room for\nbright ideas.'
-                      : 'Every school day.\nA little simpler.',
-                  style: textStyle(
-                    25,
-                    weight: FontWeight.w800,
-                    color: Colors.white,
-                    height: 1.25,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  teacher
-                      ? 'Your teaching day starts here.'
-                      : 'Learning, updates and moments that matter.',
-                  style: textStyle(11, color: const Color(0xFFD3E8DC)),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     ),
   );

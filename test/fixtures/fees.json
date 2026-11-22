@@ -1,0 +1,74 @@
+[
+  {
+    "label": "no statements",
+    "invoices": [],
+    "expected": "—"
+  },
+  {
+    "label": "minor fractions and paid records",
+    "invoices": [
+      {
+        "amount": "0.10",
+        "currency": "INR"
+      },
+      {
+        "amount": 0.2,
+        "currency": "INR"
+      },
+      {
+        "amount": 30,
+        "currency": "INR",
+        "status": "PAID"
+      }
+    ],
+    "expected": "INR 0.30"
+  },
+  {
+    "label": "partial and nested mixed currencies",
+    "invoices": [
+      {
+        "amount": 30,
+        "balance_due": "12.50",
+        "currency": "INR",
+        "status": "partial"
+      },
+      {
+        "data": {
+          "amount": 7,
+          "currency": "CAD"
+        }
+      }
+    ],
+    "expected": "CAD 7\nINR 12.50"
+  },
+  {
+    "label": "closed statements",
+    "invoices": [
+      {
+        "amount": 20,
+        "status": "waived"
+      }
+    ],
+    "expected": "Nothing due"
+  },
+  {
+    "label": "missing partial balance",
+    "invoices": [
+      {
+        "amount": 9,
+        "currency": "EUR",
+        "status": "partially_paid"
+      }
+    ],
+    "expected": "Balance unavailable"
+  },
+  {
+    "label": "unlabelled currency",
+    "invoices": [
+      {
+        "amount": 3
+      }
+    ],
+    "expected": "Balance unavailable"
+  }
+]

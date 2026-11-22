@@ -57,17 +57,17 @@ class _ReportLockState extends State<ReportLock> with WidgetsBindingObserver {
     final targetOwner = c.auth.userId;
     setState(() => checking = true);
     try {
-      if (!await auth.canCheckBiometrics) {
+      if (!await auth.isDeviceSupported()) {
         if (mounted) {
           setState(
-            () => error = 'Set up device biometrics to unlock report cards.',
+            () => error = 'Set up a device screen lock to open report cards.',
           );
         }
         return;
       }
       final ok = await auth.authenticate(
         localizedReason: 'Unlock this child’s private report card',
-        biometricOnly: true,
+        biometricOnly: false,
         persistAcrossBackgrounding: false,
       );
       if (mounted) {
@@ -84,7 +84,7 @@ class _ReportLockState extends State<ReportLock> with WidgetsBindingObserver {
     } catch (_) {
       if (mounted) {
         setState(
-          () => error = 'Biometric authentication is unavailable. Your report remains locked.',
+          () => error = 'Device authentication is unavailable. Your report remains locked.',
         );
       }
     } finally {
@@ -112,7 +112,9 @@ class _ReportLockState extends State<ReportLock> with WidgetsBindingObserver {
             style: textStyle(25, weight: FontWeight.w800),
           ),
           const SizedBox(height: 12),
-          Text(error ?? 'Use your device biometrics to open this report card.'),
+          Text(
+            error ?? 'Use your device screen lock or biometrics to open this report card.',
+          ),
           const SizedBox(height: 22),
           PrimaryButton(
             'Unlock report card',

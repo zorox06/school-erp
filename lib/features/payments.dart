@@ -3,6 +3,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../core/data.dart';
 import '../core/theme.dart';
+import '../core/fees.dart';
 import '../ui/components.dart';
 
 class PaymentsScreen extends StatefulWidget {
@@ -17,15 +18,15 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   Widget build(BuildContext context) {
     final c = AppScope.of(context);
     final list = c.snapshot.invoices
-        .where((e) => tab == 0 ? e.status != 'paid' : e.status == 'paid')
+        .where((e) => tab == 0 ? !feeClosed(e) : feeClosed(e))
         .toList();
     return ContentList(
       onRefresh: c.refresh,
       children: [
         const ScreenHeading(
-          'One less thing to manage.',
+          'Fee statements',
           eyebrow: 'School fees',
-          subtitle: 'Clear balances. A place for every receipt.',
+          subtitle: 'Balances and statements for the selected student.',
         ),
         Container(
           padding: const EdgeInsets.all(23),
@@ -56,7 +57,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
               ),
               const SizedBox(height: 15),
               Text(
-                '—',
+                outstandingFees(c.snapshot.invoices),
                 style: textStyle(
                   43,
                   color: Colors.white,
@@ -66,7 +67,9 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                'Your school hasn’t shared a fee statement yet.',
+                c.snapshot.invoices.isEmpty
+                    ? 'Your school hasn’t shared a fee statement yet.'
+                    : 'Based on the statements shared by your school.',
                 style: textStyle(11, color: const Color(0xFFDAE8DF)),
               ),
             ],
@@ -74,7 +77,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
         ),
         const SizedBox(height: 25),
         FilterTabs(
-          labels: const ['Due payments', 'Payment history'],
+          labels: const ['Due payments', 'Closed statements'],
           selected: tab,
           onSelected: (i) => setState(() => tab = i),
         ),
@@ -83,11 +86,11 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
           EmptyPanel(
             icon: tab == 0 ? LucideIcons.receipt : LucideIcons.folderOpen,
             title: tab == 0
-                ? 'No fee statement yet.'
-                : 'Every receipt, right here.',
+                ? 'No outstanding statements'
+                : 'No closed statements',
             message: tab == 0
-                ? 'Your school’s invoices and payment details will appear here. No fee information has been added.'
-                : 'Once a payment is confirmed, its receipt will be available here. There are no payments to show.',
+                ? 'Statements with a balance will appear here.'
+                : 'Paid, waived and cancelled statements appear here.',
             color: Palette.amber,
             background: Palette.amberWash,
           )
@@ -101,7 +104,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
           ),
         const SizedBox(height: 20),
         const InfoBanner(
-          'Payment status is confirmed by your school’s payment provider. No payment information is stored on this device.',
+          'Contact the school office if a payment or balance needs correcting.',
           icon: LucideIcons.shieldCheck,
         ),
       ],
@@ -125,7 +128,10 @@ class InvoiceScreen extends StatelessWidget {
           children: [
             Text('Amount', style: textStyle(12, color: Palette.muted)),
             const SizedBox(height: 8),
-            Text('—', style: textStyle(34, weight: FontWeight.w800)),
+            Text(
+              statementAmount(record)?.display ?? 'Amount unavailable',
+              style: textStyle(34, weight: FontWeight.w800),
+            ),
             const SizedBox(height: 18),
             const Divider(),
             const SizedBox(height: 12),
@@ -137,9 +143,10 @@ class InvoiceScreen extends StatelessWidget {
         ),
       ),
       const SizedBox(height: 22),
-      const InfoBanner(
-        'Online checkout becomes available after your school connects its payment service. No payment will be initiated from this preview.',
-      ),
+      if (!feeClosed(record) && feeFields(record).containsKey('balance_due'))
+        InfoBanner(
+          'Outstanding: ${statementAmount(record, balance: true)?.display ?? 'Balance unavailable'}',
+        ),
       const SizedBox(height: 20),
       OutlinedButton(
         onPressed: () => Navigator.pop(context),

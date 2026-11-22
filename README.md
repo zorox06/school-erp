@@ -15,11 +15,11 @@ flutter run --dart-define-from-file=config/supabase.local.json
 .\build-desktop.ps1
 ```
 
-The build script creates a release-mode, locally installable APK and copies it to the Desktop. Its current debug signing identity is for testing; configure your own release keystore before uploading to Play Console. No signing key is distributed in the archive.
+The build script creates a debug APK for local testing. For a signed release use `./build-desktop.ps1 -Release`. Configure the ignored `android/key.properties` with `storeFile` (absolute path or relative to the android directory), `storePassword`, `keyAlias` and `keyPassword`. Release packaging requires all four settings and a private keystore.
 
-## Supabase is live, with empty business data
+## Shared Supabase backend
 
-The supplied project is connected. All migration files in `supabase/migrations` have been applied, and `dispatch-school-alerts` is deployed. `ENABLE_SCHOOL_DATA=true` enables the real repositories; it does not seed any records. Public client configuration is in `config/build.public.json`. School names, identities and business figures remain null until actual records exist; collections are empty.
+Both clients use the public configuration for the shared Supabase project. Its configured hostname failed DNS resolution during the latest verification. All migration files in `supabase/migrations` have been applied, and `dispatch-school-alerts` is deployed. `ENABLE_SCHOOL_DATA=true` enables the real repositories; it does not seed any records. Public client configuration is in `config/build.public.json`. School names, identities and business figures remain null until actual records exist; collections are empty.
 
 Create real accounts through trusted Supabase administration, then link profiles, active school memberships, classes, students, guardians and teacher assignments. The app cannot self-assign privileges. A valid account without a membership sees the school-access gate. No account or password has been invented for this delivery.
 
@@ -59,3 +59,7 @@ Keep screens and `AppController`. Replace `AuthRepository`, `SchoolRepository`, 
 ## Existing excluded functionality
 
 The existing Fees/statement/payment-history screens and invoice adapter remain; no payment gateway or other new payment feature was added. No bus/GPS, QR/student-ID, pickup/visitor, Live Activities or language-switching functionality was added. PDF dependencies contain transitive barcode utilities, but the app does not implement QR/barcode features.
+
+## Coordinating mobile and web
+
+The [web client](https://github.com/zorox06/school-erp-web) uses the same Supabase accounts, school roles, RPCs and private bucket. Mobile owns the migrations and shared fee examples. From the web checkout, run `node scripts/mobile-contract.mjs "../school erp"` after backend or configuration changes. Append `--sync` to refresh its contract fixtures and public defaults, then run the browser suite. A live release requires the same reachable project URL and publishable key in both builds.
