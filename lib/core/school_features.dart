@@ -91,7 +91,12 @@ class SchoolFeatures extends ChangeNotifier {
     'submissions',
     'timetable',
   ];
+  final Map<String, bool> _unreadByChild = {};
+  bool hasUnreadFor(String id) => id == childId
+      ? rows('conversations').any((r) => (r['unread_count'] as num? ?? 0) > 0)
+      : _unreadByChild[id] ?? false;
   Future<void> selectChild(String? id) async {
+    if (childId != null) _unreadByChild[childId!] = hasUnreadFor(childId!);
     if (childId != id) {
       childId = id;
       _generation++;

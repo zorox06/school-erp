@@ -19,42 +19,83 @@ class AppScope extends InheritedNotifier<AppController> {
 TextStyle textStyle(
   double size, {
   FontWeight weight = FontWeight.w500,
-  Color color = Palette.ink,
+  Color? color,
   double height = 1.45,
 }) => TextStyle(
   fontFamily: 'Manrope',
+  fontFeatures: const [FontFeature.tabularFigures()],
   fontSize: size,
   fontWeight: weight,
   color: color,
   height: height,
 );
 
-Future<T?> openPage<T>(BuildContext context, Widget page) =>
-    Navigator.of(context).push<T>(
-      PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) => page,
-        transitionDuration: MediaQuery.disableAnimationsOf(context)
-            ? Duration.zero
-            : const Duration(milliseconds: 240),
-        reverseTransitionDuration: MediaQuery.disableAnimationsOf(context)
-            ? Duration.zero
-            : const Duration(milliseconds: 180),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
-            FadeTransition(
-              opacity: CurvedAnimation(
-                parent: animation,
-                curve: Curves.easeOut,
-              ),
-              child: SlideTransition(
-                position: Tween(
-                  begin: const Offset(.025, 0),
-                  end: Offset.zero,
-                ).animate(animation),
-                child: child,
-              ),
-            ),
+bool limitSchoolEffects(BuildContext context) =>
+    context
+        .dependOnInheritedWidgetOfExactType<AppScope>()
+        ?.notifier
+        ?.limitEffects ??
+    false;
+
+Duration schoolMotion(BuildContext context, int full, int light) {
+  if (MediaQuery.disableAnimationsOf(context)) return Duration.zero;
+  return Duration(milliseconds: limitSchoolEffects(context) ? light : full);
+}
+
+Future<T?> openPage<T>(BuildContext context, Widget page) {
+  final limited = limitSchoolEffects(context);
+  return Navigator.of(context).push<T>(
+    PageRouteBuilder(
+      pageBuilder: (context, animation, secondaryAnimation) => page,
+      transitionDuration: schoolMotion(context, 310, 135),
+      reverseTransitionDuration: schoolMotion(context, 205, 110),
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        final eased = CurveTween(curve: Curves.easeOutCubic).animate(animation);
+        final slide = SlideTransition(
+          position: Tween(
+            begin: Offset(limited ? .018 : .055, 0),
+            end: Offset.zero,
+          ).animate(eased),
+          child: child,
+        );
+        return limited
+            ? slide
+            : FadeTransition(
+                opacity: Tween(begin: .63, end: 1.0).animate(eased),
+                child: slide,
+              );
+      },
+    ),
+  );
+}
+
+class EntranceMotion extends StatelessWidget {
+  const EntranceMotion({super.key, required this.child, this.follow = false});
+
+  final Widget child;
+  final bool follow;
+
+  @override
+  Widget build(BuildContext context) {
+    final duration = schoolMotion(context, follow ? 460 : 350, 130);
+    if (duration == Duration.zero) return child;
+    final limited = limitSchoolEffects(context);
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: duration,
+      curve: follow && !limited
+          ? const Interval(.15, 1, curve: Curves.easeOutCubic)
+          : Curves.easeOutCubic,
+      child: child,
+      builder: (context, progress, child) => Transform.translate(
+        offset: Offset(0, (1 - progress) * (limited ? 5 : 13)),
+        child: limited
+            ? child
+            : Opacity(opacity: .7 + .3 * progress, child: child),
       ),
     );
+  }
+}
 
 void tell(BuildContext context, String message) {
   ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -72,7 +113,7 @@ class Brand extends StatelessWidget {
         width: large ? 44 : 35,
         height: large ? 44 : 35,
         decoration: BoxDecoration(
-          color: Palette.teal,
+          color: context.tones.teal,
           borderRadius: BorderRadius.circular(large ? 14 : 12),
         ),
         child: Icon(
@@ -106,12 +147,12 @@ class Surface extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) => Material(
-    color: color,
+    color: context.tones.resolve(color),
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(radius),
       side: BorderSide(
         color: color == Palette.paper
-            ? Palette.line.withValues(alpha: .8)
+            ? context.tones.line.withValues(alpha: .8)
             : Colors.transparent,
       ),
     ),
@@ -139,10 +180,10 @@ class IconBadge extends StatelessWidget {
     width: size,
     height: size,
     decoration: BoxDecoration(
-      color: background,
+      color: context.tones.resolve(background),
       borderRadius: BorderRadius.circular(size * .3),
     ),
-    child: Icon(icon, color: color, size: size * .47),
+    child: Icon(icon, color: context.tones.resolve(color), size: size * .47),
   );
 }
 
@@ -161,20 +202,24 @@ class Tag extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
     decoration: BoxDecoration(
-      color: background,
+      color: context.tones.resolve(background),
       borderRadius: BorderRadius.circular(9),
     ),
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         if (icon != null) ...[
-          Icon(icon, size: 12, color: color),
+          Icon(icon, size: 12, color: context.tones.resolve(color)),
           const SizedBox(width: 5),
         ],
         Flexible(
           child: Text(
             text,
-            style: textStyle(10, weight: FontWeight.w800, color: color),
+            style: textStyle(
+              10,
+              weight: FontWeight.w800,
+              color: context.tones.resolve(color),
+            ),
           ),
         ),
       ],
@@ -203,21 +248,22 @@ class PrimaryButton extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (busy) ...[
-            const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Palette.paper,
+          Flexible(child: Text(label, textAlign: TextAlign.center)),
+          if (icon != null || busy) ...[
+            const SizedBox(width: 10),
+            SizedBox.square(
+              dimension: 18,
+              child: AnimatedSwitcher(
+                duration: schoolMotion(context, 170, 85),
+                child: busy
+                    ? CircularProgressIndicator(
+                        key: ValueKey('busy'),
+                        strokeWidth: 2,
+                        color: context.tones.paper,
+                      )
+                    : Icon(icon, size: 17),
               ),
             ),
-            const SizedBox(width: 10),
-          ],
-          Flexible(child: Text(label, textAlign: TextAlign.center)),
-          if (icon != null && !busy) ...[
-            const SizedBox(width: 10),
-            Icon(icon, size: 17),
           ],
         ],
       ),
@@ -260,7 +306,11 @@ class ScreenHeading extends StatelessWidget {
       children: [
         Text(
           eyebrow.toUpperCase(),
-          style: textStyle(10, color: Palette.teal, weight: FontWeight.w800),
+          style: textStyle(
+            12,
+            color: context.tones.teal,
+            weight: FontWeight.w700,
+          ),
         ),
         const SizedBox(height: 7),
         Row(
@@ -277,7 +327,7 @@ class ScreenHeading extends StatelessWidget {
         ),
         if (subtitle != null) ...[
           const SizedBox(height: 9),
-          Text(subtitle!, style: textStyle(13, color: Palette.muted)),
+          Text(subtitle!, style: textStyle(13, color: context.tones.muted)),
         ],
       ],
     ),
@@ -335,23 +385,25 @@ class AppPage extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      leading: IconButton(
-        tooltip: 'Go back',
-        onPressed: () => Navigator.of(context).pop(),
-        icon: const Icon(LucideIcons.arrowLeft, size: 22),
-      ),
-      title: Text(
-        eyebrow.isEmpty ? title : eyebrow,
-        style: textStyle(13, weight: FontWeight.w700),
-      ),
-      actions: [
-        if (AppScope.of(context).workspace == Workspace.parent &&
-            AppScope.of(context).snapshot.children.isNotEmpty)
-          const ChildAvatar(),
-        ...?actions,
-      ],
-    ),
+    appBar: ModalRoute.of(context)?.isFirst == true
+        ? null
+        : AppBar(
+            leading: IconButton(
+              tooltip: 'Go back',
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(LucideIcons.arrowLeft, size: 22),
+            ),
+            title: Text(
+              eyebrow.isEmpty ? title : eyebrow,
+              style: textStyle(13, weight: FontWeight.w700),
+            ),
+            actions: [
+              if (AppScope.of(context).workspace == Workspace.parent &&
+                  AppScope.of(context).snapshot.children.isNotEmpty)
+                const ChildAvatar(),
+              ...?actions,
+            ],
+          ),
     body: SafeArea(
       top: false,
       child: ContentList(
@@ -400,7 +452,10 @@ class EmptyIllustration extends StatelessWidget {
           height: 104,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: background, width: 1.2),
+            border: Border.all(
+              color: context.tones.resolve(background),
+              width: 1.2,
+            ),
           ),
         ),
         Transform.rotate(
@@ -409,12 +464,12 @@ class EmptyIllustration extends StatelessWidget {
             width: 75,
             height: 78,
             decoration: BoxDecoration(
-              color: background,
+              color: context.tones.resolve(background),
               borderRadius: BorderRadius.circular(24),
             ),
             child: Transform.rotate(
               angle: .11,
-              child: Icon(icon, color: color, size: 34),
+              child: Icon(icon, color: context.tones.resolve(color), size: 34),
             ),
           ),
         ),
@@ -425,7 +480,7 @@ class EmptyIllustration extends StatelessWidget {
             width: 11,
             height: 11,
             decoration: BoxDecoration(
-              color: color.withValues(alpha: .3),
+              color: context.tones.resolve(color).withValues(alpha: .3),
               shape: BoxShape.circle,
             ),
           ),
@@ -437,7 +492,7 @@ class EmptyIllustration extends StatelessWidget {
             width: 7,
             height: 7,
             decoration: BoxDecoration(
-              color: color.withValues(alpha: .22),
+              color: context.tones.resolve(color).withValues(alpha: .22),
               shape: BoxShape.circle,
             ),
           ),
@@ -449,11 +504,15 @@ class EmptyIllustration extends StatelessWidget {
             width: 30,
             height: 30,
             decoration: BoxDecoration(
-              color: Palette.paper,
+              color: context.tones.paper,
               shape: BoxShape.circle,
-              border: Border.all(color: Palette.line),
+              border: Border.all(color: context.tones.line),
             ),
-            child: Icon(LucideIcons.sparkles, size: 13, color: color),
+            child: Icon(
+              LucideIcons.sparkles,
+              size: 13,
+              color: context.tones.resolve(color),
+            ),
           ),
         ),
       ],
@@ -485,9 +544,18 @@ class EmptyPanel extends StatelessWidget {
     child: Column(
       children: [
         if (compact)
-          IconBadge(icon, color: color, background: background, size: 44)
+          IconBadge(
+            icon,
+            color: context.tones.resolve(color),
+            background: background,
+            size: 44,
+          )
         else
-          EmptyIllustration(icon, color: color, background: background),
+          EmptyIllustration(
+            icon,
+            color: context.tones.resolve(color),
+            background: background,
+          ),
         SizedBox(height: compact ? 14 : 20),
         Text(
           title,
@@ -500,7 +568,7 @@ class EmptyPanel extends StatelessWidget {
           child: Text(
             message,
             textAlign: TextAlign.center,
-            style: textStyle(13, color: Palette.muted, height: 1.65),
+            style: textStyle(13, color: context.tones.muted, height: 1.65),
           ),
         ),
         if (action != null) ...[
@@ -534,7 +602,7 @@ class FilterTabs extends StatelessWidget {
             selected: i == selected,
             button: true,
             child: Material(
-              color: selected == i ? Palette.teal : Palette.paper,
+              color: selected == i ? context.tones.teal : context.tones.paper,
               borderRadius: BorderRadius.circular(12),
               clipBehavior: Clip.antiAlias,
               child: InkWell(
@@ -549,7 +617,7 @@ class FilterTabs extends StatelessWidget {
                     style: textStyle(
                       12,
                       weight: FontWeight.w700,
-                      color: selected == i ? Colors.white : Palette.muted,
+                      color: selected == i ? Colors.white : context.tones.muted,
                     ),
                   ),
                 ),
@@ -604,7 +672,7 @@ class SettingRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 3),
       child: Row(
         children: [
-          IconBadge(icon, color: color, size: 41),
+          IconBadge(icon, color: context.tones.resolve(color), size: 41),
           const SizedBox(width: 13),
           Expanded(
             child: Column(
@@ -613,16 +681,19 @@ class SettingRow extends StatelessWidget {
                 Text(title, style: textStyle(14, weight: FontWeight.w700)),
                 if (subtitle != null) ...[
                   const SizedBox(height: 3),
-                  Text(subtitle!, style: textStyle(11, color: Palette.muted)),
+                  Text(
+                    subtitle!,
+                    style: textStyle(11, color: context.tones.muted),
+                  ),
                 ],
               ],
             ),
           ),
           trailing ??
-              const Icon(
+              Icon(
                 LucideIcons.chevronRight,
                 size: 17,
-                color: Palette.muted,
+                color: context.tones.muted,
               ),
         ],
       ),
@@ -658,7 +729,7 @@ class RecordTile extends StatelessWidget {
                     record.category!.toUpperCase(),
                     style: textStyle(
                       9,
-                      color: Palette.teal,
+                      color: context.tones.teal,
                       weight: FontWeight.w800,
                     ),
                   ),
@@ -674,14 +745,14 @@ class RecordTile extends StatelessWidget {
                     record.description!,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: textStyle(12, color: Palette.muted),
+                    style: textStyle(12, color: context.tones.muted),
                   ),
                 ],
               ],
             ),
           ),
           const SizedBox(width: 8),
-          const Icon(LucideIcons.chevronRight, size: 17, color: Palette.muted),
+          Icon(LucideIcons.chevronRight, size: 17, color: context.tones.muted),
         ],
       ),
     ),
@@ -703,16 +774,23 @@ class InfoBanner extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(15),
     decoration: BoxDecoration(
-      color: background,
+      color: context.tones.resolve(background),
       borderRadius: BorderRadius.circular(16),
     ),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 17, color: color),
+        Icon(icon, size: 17, color: context.tones.resolve(color)),
         const SizedBox(width: 10),
         Expanded(
-          child: Text(text, style: textStyle(12, color: color, height: 1.6)),
+          child: Text(
+            text,
+            style: textStyle(
+              12,
+              color: context.tones.resolve(color),
+              height: 1.6,
+            ),
+          ),
         ),
       ],
     ),
@@ -760,13 +838,64 @@ class ChildAvatar extends StatelessWidget {
       ),
       icon: CircleAvatar(
         radius: 17,
-        backgroundColor: Palette.mint,
+        backgroundColor: context.tones.mint,
         child: name == null || name.isEmpty
             ? const Icon(Icons.person_outline, size: 18)
             : Text(
                 name.characters.first.toUpperCase(),
                 style: textStyle(13, weight: FontWeight.w800),
               ),
+      ),
+    );
+  }
+}
+
+enum RecordSyncState { synced, queued, conflict, offline, syncing }
+
+class SyncPill extends StatelessWidget {
+  final RecordSyncState state;
+  final String label;
+  const SyncPill(this.state, this.label, {super.key});
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tones;
+    final (icon, ink, fill) = switch (state) {
+      RecordSyncState.conflict => (
+        Icons.report_outlined,
+        t.danger,
+        t.coralWash,
+      ),
+      RecordSyncState.queued => (Icons.schedule, t.amber, t.amberWash),
+      RecordSyncState.offline => (
+        Icons.cloud_off_outlined,
+        t.amber,
+        t.amberWash,
+      ),
+      RecordSyncState.syncing => (Icons.sync, t.teal, t.mint),
+      RecordSyncState.synced => (Icons.cloud_done_outlined, t.teal, t.mint),
+    };
+    return Align(
+      alignment: Alignment.centerLeft,
+      widthFactor: 1,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: fill,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: ink, size: 14),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: textStyle(11, color: ink, weight: FontWeight.w700),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

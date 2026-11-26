@@ -3,82 +3,159 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'core/data.dart';
 import 'core/theme.dart';
+import 'core/school_link.dart';
 import 'ui/components.dart';
-import 'features/auth.dart';
-import 'features/dashboard.dart';
-import 'features/learning.dart';
-import 'features/school.dart';
-import 'features/messages.dart';
-import 'features/payments.dart';
-import 'features/account.dart';
-import 'features/notices.dart';
-import 'features/attendance.dart';
+import 'features/auth/screen.dart';
+import 'features/workspace/workspaces.dart';
+import 'features/dashboard/screen.dart';
+import 'features/account/screen.dart';
+import 'features/attendance/screen.dart';
 
-class SchooldayApp extends StatelessWidget {
+class SchooldayApp extends StatefulWidget {
+  const SchooldayApp({super.key, required this.controller, this.router});
   final AppController controller;
-  final GlobalKey<NavigatorState>? navigatorKey;
-  const SchooldayApp({super.key, required this.controller, this.navigatorKey});
+  final SchoolRouter? router;
+  @override
+  State<SchooldayApp> createState() => _SchooldayAppState();
+}
+
+class _SchooldayAppState extends State<SchooldayApp> {
+  late final router = widget.router ?? SchoolRouter(widget.controller);
+  @override
+  void dispose() {
+    if (widget.router == null) router.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => AppScope(
-    controller: controller,
-    child: MaterialApp(
+    controller: widget.controller,
+    child: MaterialApp.router(
       title: 'Schoolday',
-      navigatorKey: navigatorKey,
+      routerDelegate: router,
       debugShowCheckedModeBanner: false,
       theme: schooldayTheme(),
+      darkTheme: schooldayTheme(Brightness.dark),
       builder: (context, child) {
-        final c = AppScope.of(context);
         final media = MediaQuery.of(context);
         return MediaQuery(
           data: media.copyWith(
-            disableAnimations: c.dataSaver || media.disableAnimations,
+            disableAnimations:
+                AppScope.of(context).reduceMotion || media.disableAnimations,
           ),
           child: child!,
         );
       },
-      home: ListenableBuilder(
-        listenable: controller,
-        builder: (context, _) =>
-            controller.entered && !controller.accessAssigned
-            ? Scaffold(
-                appBar: AppBar(title: const Text('Schoolday')),
-                body: ContentList(
-                  children: [
-                    const ScreenHeading(
-                      'Your account is signed in.',
-                      eyebrow: 'School access',
-                    ),
-                    if (controller.loading)
-                      const LinearProgressIndicator()
-                    else if (controller.loadError != null)
-                      EmptyPanel(
-                        icon: LucideIcons.cloudOff,
-                        title: 'School workspace unavailable',
-                        message: controller.loadError!,
-                      )
-                    else
-                      const EmptyPanel(
-                        icon: LucideIcons.shieldCheck,
-                        title: 'Waiting for school access',
-                        message: 'Your school must assign your account a role and link its records. You cannot choose your own permissions.',
-                      ),
-                    OutlinedButton(
-                      onPressed: controller.loading ? null : controller.refresh,
-                      child: const Text('Check school access'),
-                    ),
-                    TextButton(
-                      onPressed: controller.leave,
-                      child: const Text('Sign out'),
-                    ),
-                  ],
-                ),
-              )
-            : controller.entered
-            ? MainShell(key: ValueKey(controller.workspace))
-            : const LoginScreen(),
-      ),
     ),
   );
+}
+
+class SchoolRouter extends RouterDelegate<RouteSettings>
+    with ChangeNotifier, PopNavigatorRouterDelegateMixin<RouteSettings> {
+  SchoolRouter(this.controller) {
+    controller.addListener(_refresh);
+  }
+  final AppController controller;
+  @override
+  final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+  SchoolLink? _link;
+  Object? _scope;
+  Object get _identity => (
+    controller.auth.userId,
+    controller.snapshot.schoolId,
+    controller.workspace,
+    controller.selectedChildId,
+  );
+  void _refresh() {
+    if (_link != null && (_scope != _identity || !_link!.allowed(controller))) {
+      _link = null;
+    }
+    notifyListeners();
+  }
+
+  void show(SchoolLink link) {
+    if (!link.allowed(controller)) return;
+    navigatorKey.currentState?.popUntil((route) => route.isFirst);
+    _scope = _identity;
+    _link = link;
+    notifyListeners();
+  }
+
+  @override
+  Future<void> setNewRoutePath(RouteSettings configuration) async {}
+  @override
+  void dispose() {
+    controller.removeListener(_refresh);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final link = _link;
+    return Navigator(
+      key: navigatorKey,
+      pages: [
+        MaterialPage<void>(
+          key: ValueKey((
+            controller.auth.userId,
+            controller.snapshot.schoolId,
+            controller.workspace,
+            controller.entered,
+          )),
+          child: _home(),
+        ),
+        if (link != null && link.allowed(controller))
+          MaterialPage<void>(
+            key: ObjectKey(link),
+            child: link.screen(controller),
+          ),
+      ],
+      onDidRemovePage: (page) {
+        if (_link != null && page.key == ObjectKey(_link)) {
+          _link = null;
+          notifyListeners();
+        }
+      },
+    );
+  }
+
+  Widget _home() => controller.entered && !controller.accessAssigned
+      ? Scaffold(
+          appBar: AppBar(title: const Text('Schoolday')),
+          body: ContentList(
+            children: [
+              const ScreenHeading(
+                'Your account is signed in.',
+                eyebrow: 'School access',
+              ),
+              if (controller.loading)
+                const LinearProgressIndicator()
+              else if (controller.loadError != null)
+                EmptyPanel(
+                  icon: LucideIcons.cloudOff,
+                  title: 'School workspace unavailable',
+                  message: controller.loadError!,
+                )
+              else
+                const EmptyPanel(
+                  icon: LucideIcons.shieldCheck,
+                  title: 'Waiting for school access',
+                  message: 'Your school must assign your account a role and link its records. You cannot choose your own permissions.',
+                ),
+              OutlinedButton(
+                onPressed: controller.loading ? null : controller.refresh,
+                child: const Text('Check school access'),
+              ),
+              TextButton(
+                onPressed: controller.leave,
+                child: const Text('Sign out'),
+              ),
+            ],
+          ),
+        )
+      : controller.entered
+      ? MainShell(key: ValueKey(controller.workspace))
+      : const LoginScreen();
 }
 
 class MainShell extends StatefulWidget {
@@ -88,6 +165,15 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
+  final _pages = PageController(keepPage: false);
+  int _index = 0;
+
+  void _selectTab(int index) {
+    if (index == _index) return;
+    setState(() => _index = index);
+    _pages.jumpToPage(index);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -97,6 +183,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _pages.dispose();
     super.dispose();
   }
 
@@ -106,6 +193,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     final controller = context
         .getInheritedWidgetOfExactType<AppScope>()!
         .notifier!;
+    controller.refreshDevicePerformance();
     if (controller.auth.signedIn &&
         !controller.loading &&
         !controller.signingOut) {
@@ -113,92 +201,70 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     }
   }
 
-  int _index = 0;
+  @override
+  void didHaveMemoryPressure() {
+    if (mounted) AppScope.of(context).refreshDevicePerformance();
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = AppScope.of(context);
     final teacher = c.workspace.isStaff;
-    final student = c.workspace == Workspace.student;
-    final leadership = c.workspace.isLeadership;
-    final labels = teacher
-        ? [
-            'Today',
-            'Classes',
-            leadership ? 'Notices' : 'Homework',
-            'Inbox',
-            'Schedule',
-          ]
-        : [
-            'Home',
-            'Learning',
-            'School',
-            'Inbox',
-            student ? 'Schedule' : 'Fees',
-          ];
-    final icons = teacher
-        ? [
-            LucideIcons.house,
-            LucideIcons.users,
-            leadership ? LucideIcons.newspaper : LucideIcons.bookOpen,
-            LucideIcons.messageCircle,
-            LucideIcons.calendarDays,
-          ]
-        : [
-            LucideIcons.house,
-            LucideIcons.bookOpen,
-            LucideIcons.school,
-            LucideIcons.messageCircle,
-            student ? LucideIcons.calendarDays : LucideIcons.wallet,
-          ];
-    final screens = <Widget>[
-      DashboardScreen(onNavigate: (i) => setState(() => _index = i)),
-      teacher ? const ClassesScreen() : const LearningScreen(),
-      leadership
-          ? const NoticesScreen()
-          : teacher
-          ? const LearningScreen(teacher: true)
-          : const SchoolScreen(),
-      const MessagesScreen(),
-      teacher || student ? const ScheduleScreen() : const PaymentsScreen(),
-    ];
-    final wide = MediaQuery.sizeOf(context).width >= 950;
+    final width = MediaQuery.sizeOf(context).width;
+    final wide = width >= 950;
+    final compact = width < 600;
+    final spaces = schoolWorkspaces(c.workspace);
+    void select(int i) => _selectTab(i);
     return PopScope(
       canPop: _index == 0,
       onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) setState(() => _index = 0);
+        if (!didPop) _selectTab(0);
       },
       child: Scaffold(
+        bottomNavigationBar: compact
+            ? NavigationBar(
+                height: 66,
+                selectedIndex: _index,
+                onDestinationSelected: select,
+                destinations: [
+                  for (final space in spaces)
+                    NavigationDestination(
+                      icon: Icon(space.icon),
+                      label: space.name,
+                    ),
+                ],
+              )
+            : null,
         body: SafeArea(
-          bottom: false,
           child: Row(
             children: [
-              if (wide)
+              if (!compact)
                 NavigationRail(
+                  extended: wide,
+                  minExtendedWidth: 156,
+                  groupAlignment: -.9,
+                  labelType: wide
+                      ? NavigationRailLabelType.none
+                      : NavigationRailLabelType.all,
                   selectedIndex: _index,
-                  onDestinationSelected: (i) => setState(() => _index = i),
-                  backgroundColor: Palette.paper,
-                  labelType: NavigationRailLabelType.all,
-                  leading: const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 22),
-                    child: IconBadge(LucideIcons.sprout),
-                  ),
-                  destinations: List.generate(
-                    5,
-                    (i) => NavigationRailDestination(
-                      icon: Icon(icons[i], size: 21),
-                      label: Text(labels[i]),
-                    ),
-                  ),
+                  onDestinationSelected: select,
+                  destinations: [
+                    for (final space in spaces)
+                      NavigationRailDestination(
+                        icon: Icon(space.icon),
+                        label: Text(space.name),
+                      ),
+                  ],
                 ),
               Expanded(
                 child: Column(
                   children: [
                     Padding(
                       padding: EdgeInsets.fromLTRB(
-                        wide ? 28 : 22,
-                        14,
-                        wide ? 28 : 22,
-                        7,
+                        wide ? 28 : 18,
+                        4,
+                        wide ? 28 : 18,
+                        3,
                       ),
                       child: Center(
                         child: ConstrainedBox(
@@ -214,8 +280,17 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                                   ),
                                 ),
                               ),
-                              if (!teacher && c.snapshot.children.isNotEmpty)
-                                const ChildAvatar(),
+                              IconButton(
+                                tooltip: 'Quick actions',
+                                onPressed: () => showWorkspaceActions(context),
+                                icon: const Icon(LucideIcons.circlePlus),
+                              ),
+                              if (c.phaseOne != null)
+                                SyncBadge(
+                                  controller: c.phaseOne!,
+                                  compact: true,
+                                ),
+
                               IconButton(
                                 tooltip: 'Notifications',
                                 onPressed: () => openPage(
@@ -230,7 +305,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                                 onPressed: () =>
                                     openPage(context, const AccountScreen()),
                                 style: IconButton.styleFrom(
-                                  backgroundColor: Palette.mint,
+                                  backgroundColor: context.tones.mint,
                                 ),
                                 icon: const Icon(
                                   LucideIcons.userRound,
@@ -242,14 +317,6 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                         ),
                       ),
                     ),
-                    if (c.phaseOne != null)
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 18),
-                          child: SyncBadge(controller: c.phaseOne!),
-                        ),
-                      ),
                     if (c.loading) const LinearProgressIndicator(minHeight: 2),
                     if (c.loadError != null)
                       MaterialBanner(
@@ -261,13 +328,56 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                           ),
                         ],
                       ),
+                    if (!teacher && c.snapshot.children.isNotEmpty)
+                      SizedBox(
+                        height: 52,
+                        child: ListView.separated(
+                          padding: const EdgeInsets.symmetric(horizontal: 18),
+                          scrollDirection: Axis.horizontal,
+                          itemCount: c.snapshot.children.length,
+                          separatorBuilder: (_, _) => const SizedBox(width: 6),
+                          itemBuilder: (context, i) {
+                            final child = c.snapshot.children[i];
+                            return ChoiceChip(
+                              showCheckmark: false,
+                              avatar: Badge(
+                                isLabelVisible:
+                                    c.features?.hasUnreadFor(child.id) ?? false,
+                                child: const Icon(
+                                  LucideIcons.userRound,
+                                  size: 15,
+                                ),
+                              ),
+                              label: Text(child.title ?? 'Student'),
+                              selected: c.selectedChildId == child.id,
+                              onSelected: (_) => c.chooseChild(child.id),
+                            );
+                          },
+                        ),
+                      ),
                     if (!teacher && c.snapshot.children.isEmpty)
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 22),
                         child: ChildSelector(),
                       ),
                     Expanded(
-                      child: IndexedStack(index: _index, children: screens),
+                      child: PageView.builder(
+                        controller: _pages,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: spaces.length,
+                        itemBuilder: (context, index) => _WorkspaceTab(
+                          active: index == _index,
+                          animateOnMount: index != 0,
+                          child: WorkspaceBody(
+                            key: ValueKey((
+                              c.workspace,
+                              c.selectedChildId,
+                              index,
+                            )),
+                            destination: spaces[index],
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -275,81 +385,85 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
             ],
           ),
         ),
-        bottomNavigationBar: wide
-            ? null
-            : DecoratedBox(
-                decoration: const BoxDecoration(
-                  color: Palette.paper,
-                  border: Border(top: BorderSide(color: Palette.line)),
-                ),
-                child: SafeArea(
-                  top: false,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 9, 8, 9),
-                    child: Row(
-                      children: List.generate(
-                        5,
-                        (i) => Expanded(
-                          child: Semantics(
-                            selected: i == _index,
-                            button: true,
-                            label: labels[i],
-                            child: InkWell(
-                              key: Key('nav-${labels[i].toLowerCase()}'),
-                              borderRadius: BorderRadius.circular(14),
-                              onTap: () => setState(() => _index = i),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 5,
-                                ),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    AnimatedContainer(
-                                      duration: c.dataSaver
-                                          ? Duration.zero
-                                          : const Duration(milliseconds: 180),
-                                      width: 49,
-                                      height: 30,
-                                      decoration: BoxDecoration(
-                                        color: i == _index
-                                            ? Palette.mint
-                                            : Colors.transparent,
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                      child: Icon(
-                                        icons[i],
-                                        size: 20,
-                                        color: i == _index
-                                            ? Palette.teal
-                                            : Palette.muted,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      labels[i],
-                                      maxLines: 1,
-                                      style: textStyle(
-                                        10,
-                                        color: i == _index
-                                            ? Palette.teal
-                                            : Palette.muted,
-                                        weight: i == _index
-                                            ? FontWeight.w800
-                                            : FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+      ),
+    );
+  }
+}
+
+class _WorkspaceTab extends StatefulWidget {
+  const _WorkspaceTab({
+    required this.active,
+    required this.animateOnMount,
+    required this.child,
+  });
+
+  final bool active, animateOnMount;
+  final Widget child;
+
+  @override
+  State<_WorkspaceTab> createState() => _WorkspaceTabState();
+}
+
+class _WorkspaceTabState extends State<_WorkspaceTab>
+    with AutomaticKeepAliveClientMixin, SingleTickerProviderStateMixin {
+  late final _enter = AnimationController(vsync: this, value: 1);
+  bool _mountedOnce = false;
+  late Duration _duration;
+  late bool _limited;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _duration = schoolMotion(context, 240, 0);
+    _limited = limitSchoolEffects(context);
+    if (!_mountedOnce && widget.active && widget.animateOnMount) _animate();
+    if (_duration == Duration.zero) _enter.value = 1;
+    _mountedOnce = true;
+  }
+
+  @override
+  void didUpdateWidget(_WorkspaceTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !oldWidget.active) _animate();
+    if (!widget.active && oldWidget.active) _enter.value = 1;
+  }
+
+  void _animate() {
+    if (_duration == Duration.zero) return;
+    _enter.duration = _duration;
+    _enter.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _enter.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    if (_duration == Duration.zero) {
+      return TickerMode(
+        enabled: widget.active,
+        child: ExcludeFocus(excluding: !widget.active, child: widget.child),
+      );
+    }
+    final eased = CurveTween(curve: Curves.easeOutCubic).animate(_enter);
+    return TickerMode(
+      enabled: widget.active,
+      child: ExcludeFocus(
+        excluding: !widget.active,
+        child: SlideTransition(
+          position: Tween(
+            begin: Offset(0, _limited ? .008 : .020),
+            end: Offset.zero,
+          ).animate(eased),
+          child: widget.child,
+        ),
       ),
     );
   }

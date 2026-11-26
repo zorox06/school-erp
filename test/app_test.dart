@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:schoolday/app.dart';
 import 'package:schoolday/core/data.dart';
+import 'package:schoolday/features/dashboard/screen.dart';
+import 'package:schoolday/features/learning/screen.dart';
 
 class TestAuth implements AuthRepository {
   @override
@@ -59,6 +61,13 @@ Future<AppController> makeController({
   );
   await c.initialize();
   return c;
+}
+
+Future<void> chooseDestination(WidgetTester tester, String key) async {
+  final nav=find.byWidgetPredicate((w)=>w is NavigationRail || w is NavigationBar);
+  final dest=find.descendant(of:nav,matching:find.text(key));
+  await tester.tap(dest.first);
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -151,7 +160,115 @@ void main() {
     c.dispose();
   });
 
-  testWidgets('parent empty workspace navigates across all five destinations', (
+  test(
+    'device limits reduce motion without overwriting data saver preference',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      var info = <String, dynamic>{'low_ram': true, 'reduce_work': true};
+      final c = AppController(
+        auth: TestAuth(),
+        repository: const EmptySchoolRepository(),
+        readDeviceInfo: () async => info,
+      );
+      await c.initialize();
+      await c.refreshDevicePerformance();
+      expect(c.dataSaver, isTrue);
+      expect(c.thumbnailWidth, 320);
+      await c.setDataSaver(false);
+      expect(c.dataSaver, isFalse);
+      expect(c.reduceMotion, isFalse);
+      expect(c.limitEffects, isTrue);
+      info = {'low_ram': false, 'reduce_work': false};
+      await c.refreshDevicePerformance();
+      expect(c.reduceMotion, isFalse);
+      expect(c.limitEffects, isFalse);
+      expect(c.thumbnailWidth, 512);
+      c.dispose();
+    },
+  );
+
+  testWidgets('daybook moves to the selected lesson and opens that timetable', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 780);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final c = await makeController(role: Workspace.teacher);
+    final now = DateTime.now();
+    final target = DateTime(
+      now.year,
+      now.month,
+      now.day + (now.weekday == 7 ? -1 : 1),
+      9,
+      30,
+    );
+    c.snapshot = SchoolSnapshot(
+      schoolId: 'example',
+      role: Workspace.teacher,
+      timetable: [SchoolRecord(id: 'lesson', title: 'Geometry', date: target)],
+    );
+    await tester.pumpWidget(SchooldayApp(controller: c));
+    await tester.pumpAndSettle();
+    final marker = find.byKey(const Key('daybook-week-marker'));
+    double markerX() => tester.getTopLeft(marker).dx;
+    final start = markerX();
+    await tester.tap(find.byKey(ValueKey('daybook-weekday-${target.weekday}')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+    final halfway = markerX();
+    await tester.pumpAndSettle();
+    expect(halfway, isNot(start));
+    expect(halfway, isNot(markerX()));
+    await tester.tap(find.textContaining('09:30   Geometry'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TimetableDayPage>(find.byType(TimetableDayPage)).day,
+      DateUtils.dateOnly(target),
+    );
+    await tester.pumpWidget(const SizedBox());
+    c.dispose();
+  });
+
+  testWidgets('workspace tabs build on demand and keep search state', (
+    tester,
+  ) async {
+    final c = await makeController(role: Workspace.teacher);
+    await tester.pumpWidget(SchooldayApp(controller: c));
+    await tester.pumpAndSettle();
+    expect(find.byType(ClassesScreen, skipOffstage: false), findsNothing);
+
+    await chooseDestination(tester, 'Classes');
+    await tester.enterText(find.byType(TextField), 'Grade seven');
+    await tester.pumpAndSettle();
+    await chooseDestination(tester, 'Today');
+    await chooseDestination(tester, 'Classes');
+    expect(find.text('Grade seven'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    c.dispose();
+  });
+
+  testWidgets(
+    'school office and platform ownership have distinct menu entries',
+    (tester) async {
+      final c = await makeController(role: Workspace.admin);
+      await tester.pumpWidget(SchooldayApp(controller: c));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Quick actions'));await tester.pumpAndSettle();
+      expect(find.text('Emergency broadcast').hitTestable(),findsOneWidget);
+      expect(find.text('Platform admin'),findsNothing);
+      Navigator.pop(tester.element(find.byType(DraggableScrollableSheet)));
+      await tester.pumpAndSettle();
+      c.snapshot=const SchoolSnapshot(schoolId:'school',platformOwner:true,role:Workspace.admin);
+      await tester.tap(find.byTooltip('Quick actions'));await tester.pumpAndSettle();
+      expect(find.text('Platform admin'),findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      c.dispose();
+    },
+  );
+
+  testWidgets('parent empty workspace navigates across all four destinations', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(390, 844);
@@ -163,14 +280,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('No child linked yet'), findsOneWidget);
     for (final key in [
-      'nav-learning',
-      'nav-school',
-      'nav-inbox',
-      'nav-fees',
-      'nav-home',
+      'Learning',
+      'School',
+      'Inbox',
+      'Today',
     ]) {
-      await tester.tap(find.byKey(Key(key)));
-      await tester.pumpAndSettle();
+      await chooseDestination(tester, key);
       expect(tester.takeException(), isNull);
     }
     expect(find.text('₹12,500'), findsNothing);
@@ -190,14 +305,12 @@ void main() {
       await tester.pumpWidget(SchooldayApp(controller: c));
       await tester.pumpAndSettle();
       for (final key in [
-        'nav-classes',
-        'nav-homework',
-        'nav-inbox',
-        'nav-schedule',
-        'nav-today',
+        'Classes',
+        'Inbox',
+        'Marks',
+        'Today',
       ]) {
-        await tester.tap(find.byKey(Key(key)));
-        await tester.pumpAndSettle();
+        await chooseDestination(tester, key);
         expect(tester.takeException(), isNull);
       }
       expect(find.byKey(const Key('nav-fees')), findsNothing);

@@ -1,15 +1,12 @@
+import 'core/school_link.dart';
 import 'core/alert_router.dart';
 import 'core/diagnostics.dart';
 import 'core/theme.dart';
 import 'ui/skeleton.dart';
-import 'features/leave.dart';
-import 'features/messages.dart';
 import 'core/launcher.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
-
-import 'features/learning.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -26,10 +23,6 @@ import 'core/phase_one/push.dart';
 import 'core/school_features.dart';
 import 'core/native_features.dart';
 import 'core/media.dart';
-import 'features/notices.dart';
-import 'features/school.dart';
-
-final schoolNavigator = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -55,7 +48,7 @@ Future<void> main() async {
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.dark,
-      systemNavigationBarColor: Color(0xFFF7F9F5),
+      systemNavigationBarColor: Palette.background,
       systemNavigationBarIconBrightness: Brightness.dark,
     ),
   );
@@ -103,6 +96,7 @@ Future<void> main() async {
           )
         : remote,
     liveDataEnabled: live,
+    readDeviceInfo: native ? NativeSchoolFeatures.info : null,
     updatePush: (enabled) => push.setEnabled(enabled),
     onLeaving: (leavingOwner) async {
       alerts?.clear();
@@ -138,73 +132,55 @@ Future<void> main() async {
             return p;
           },
   );
+  final router = SchoolRouter(controller);
   alerts = SchoolAlertRouter(
     ready: () =>
         controller.entered &&
         !controller.signingOut &&
         controller.features != null,
     dispatch: (message) async {
-      if (!controller.entered || controller.features == null) {
-        return;
+      final link = SchoolLink.parse(message);
+      if (link == null || !link.allowed(controller)) return;
+      final identity = controller.auth.userId;
+      if (!controller.workspace.isStaff &&
+          link.child != null &&
+          link.child != controller.selectedChildId) {
+        await controller.chooseChild(link.child!);
+        await WidgetsBinding.instance.endOfFrame;
       }
-      if (message['school_id'] != null &&
-          message['school_id'] != controller.snapshot.schoolId) {
+      if (identity != controller.auth.userId ||
+          !link.allowed(controller) ||
+          (!controller.workspace.isStaff &&
+              link.child != null &&
+              controller.selectedChildId != link.child)) {
         return;
       }
       if (message['action'] == 'approve' &&
-          message['type'] == 'leave' &&
+          link.kind == SchoolLinkKind.leave &&
           controller.workspace.isStaff) {
-        try {
-          await controller.features!.queue('leave_decision', {
-            'leave_id': message['entity_id'],
+        final h = controller.features;
+        final row = h
+            ?.rows('leaves')
+            .where((r) => r['id'] == link.entity && r['status'] == 'pending')
+            .firstOrNull;
+        if (row != null) {
+          await h!.queue('leave_decision', {
+            'leave_id': link.entity,
             'status': 'approved',
-            'expected_version': 1,
+            'expected_version': row['version'] ?? 1,
           });
-        } catch (_) {
-          return;
         }
       }
-      final type = message['type'];
-      if (type == 'leave') {
-        openLauncherPage(const LeaveInboxScreen());
-        return;
+      if (identity == controller.auth.userId && link.allowed(controller)) {
+        router.show(link);
+        if (link.kind == SchoolLinkKind.notice) {
+          final sync = controller.phaseOne;
+          final notice = sync?.notices
+              .where((r) => r.id == link.entity)
+              .firstOrNull;
+          if (notice != null && sync != null) await sync.readNotice(notice);
+        }
       }
-      if (type == 'homework') {
-        openLauncherPage(LearningPage(teacher: controller.workspace.isStaff));
-        return;
-      }
-      if (type == 'message') {
-        openLauncherPage(
-          Scaffold(
-            appBar: AppBar(title: const Text('Messages')),
-            body: const MessagesScreen(),
-          ),
-        );
-        return;
-      }
-      if (type == 'timetable') {
-        openLauncherPage(
-          Scaffold(
-            appBar: AppBar(title: const Text('Timetable')),
-            body: const ScheduleScreen(),
-          ),
-        );
-        return;
-      }
-      openLauncherPage(
-        Scaffold(
-          appBar: AppBar(
-            title: Text(
-              type == 'absence' ? 'School attendance' : 'School circulars',
-            ),
-          ),
-          body: SafeArea(
-            child: type == 'absence'
-                ? const AttendanceContent()
-                : const NoticesScreen(),
-          ),
-        ),
-      );
     },
   );
   controller.addListener(() => alerts?.flush());
@@ -213,7 +189,7 @@ Future<void> main() async {
   }
   controller.onChildChanged = () =>
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        schoolNavigator.currentState?.popUntil((route) => route.isFirst);
+        router.navigatorKey.currentState?.popUntil((route) => route.isFirst);
       });
   controller.createFeatures = (sync) async {
     SchoolMedia.activate(sync.owner);
@@ -227,36 +203,13 @@ Future<void> main() async {
       timezone: info['timezone'] as String? ?? 'UTC',
     );
   };
-  launcher = SchoolLauncher(controller, (type) {
-    final ctx = schoolNavigator.currentContext;
-    if (ctx == null || !controller.entered || !controller.accessAssigned) {
-      return;
-    }
-    if (type == 'attendance' && controller.workspace.canMarkAttendance) {
-      openLauncherPage(const AttendanceScreen(teacher: true));
-    }
-    if (type == 'homework') openLauncherPage(const LearningPage());
-    if (type == 'timetable') {
-      openLauncherPage(
-        Scaffold(
-          appBar: AppBar(title: const Text('Timetable')),
-          body: const ScheduleScreen(),
-        ),
-      );
-    }
-    if (type == 'notices') {
-      openLauncherPage(
-        Scaffold(
-          appBar: AppBar(title: const Text('Notices')),
-          body: const NoticesScreen(),
-        ),
-      );
-    }
+  launcher = SchoolLauncher(controller, (route) {
+    alerts?.receive({
+      ...route,
+      'event_id': 'launcher/${DateTime.now().microsecondsSinceEpoch}',
+    });
   });
-  boot.value = SchooldayApp(
-    controller: controller,
-    navigatorKey: schoolNavigator,
-  );
+  boot.value = SchooldayApp(controller: controller, router: router);
   WidgetsBinding.instance.addPostFrameCallback((_) async {
     await controller.initialize();
     if (native && defaultTargetPlatform == TargetPlatform.iOS) {
@@ -267,16 +220,8 @@ Future<void> main() async {
     await initializeCrashReporting();
     if (native) {
       final prefs = await SharedPreferences.getInstance();
-      final info = await NativeSchoolFeatures.info();
-      await controller.setDataSaver(
-        prefs.getBool('dataSaver') ?? info['low_ram'] == true,
-      );
       await controller.setWidgets(prefs.getBool('widgets') ?? false);
       await launcher?.initialize();
     }
   });
 }
-
-void openLauncherPage(Widget page) => schoolNavigator.currentState?.push(
-  MaterialPageRoute<void>(builder: (_) => page),
-);

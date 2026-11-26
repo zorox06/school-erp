@@ -8,7 +8,7 @@ import 'data.dart';
 
 class SchoolLauncher {
   final AppController controller;
-  final void Function(String) open;
+  final void Function(Map<String, dynamic>) open;
   final QuickActions shortcuts = const QuickActions();
   String? _identity;
   bool _scheduled = false;
@@ -18,12 +18,12 @@ class SchoolLauncher {
   Future<void> initialize() async {
     if (kIsWeb) return;
     await HomeWidget.setAppGroupId('group.app.schoolday.schoolerp');
-    await shortcuts.initialize((type) => open(type));
+    await shortcuts.initialize((type) => open({'type': type}));
     HomeWidget.widgetClicked.listen((uri) {
-      if (uri != null) open(uri.host);
+      if (uri != null && uri.scheme == "schoolday") open(widgetRoute(uri));
     });
     final uri = await HomeWidget.initiallyLaunchedFromHomeWidget();
-    if (uri != null) open(uri.host);
+    if (uri != null && uri.scheme == "schoolday") open(widgetRoute(uri));
     controller.addListener(changed);
     changed();
   }
@@ -116,6 +116,27 @@ class SchoolLauncher {
                     .join('\n')
               : '',
         );
+        for (final (kind, items) in [
+          ('timetable', slots),
+          ('homework', homework),
+        ]) {
+          final target = Uri(
+            scheme: 'schoolday',
+            host: kind,
+            queryParameters: enabled
+                ? {
+                    'school_id': c.snapshot.schoolId!,
+                    if (!c.workspace.isStaff && c.selectedChildId != null)
+                      'child_id': c.selectedChildId!,
+                    if (items.length == 1) 'entity_id': items.first.id,
+                  }
+                : null,
+          );
+          await HomeWidget.saveWidgetData<String>(
+            '${kind}_url',
+            target.toString(),
+          );
+        }
         await HomeWidget.saveWidgetData<bool>('enabled', enabled);
         await HomeWidget.saveWidgetData<String>(
           'updated',
@@ -147,6 +168,14 @@ class SchoolLauncher {
     await shortcuts.clearShortcutItems();
     await HomeWidget.saveWidgetData<String>('timetable', '');
     await HomeWidget.saveWidgetData<String>('homework', '');
+    await HomeWidget.saveWidgetData<String>(
+      'homework_url',
+      'schoolday://homework',
+    );
+    await HomeWidget.saveWidgetData<String>(
+      'timetable_url',
+      'schoolday://timetable',
+    );
     await HomeWidget.saveWidgetData<bool>('enabled', false);
     await HomeWidget.saveWidgetData<String>('updated', '');
     await HomeWidget.updateWidget(
@@ -159,3 +188,9 @@ class SchoolLauncher {
     );
   }
 }
+
+Map<String, dynamic> widgetRoute(Uri uri) => {
+  'type': uri.host,
+  for (final key in ['school_id', 'child_id', 'entity_id'])
+    if (uri.queryParameters[key] != null) key: uri.queryParameters[key],
+};

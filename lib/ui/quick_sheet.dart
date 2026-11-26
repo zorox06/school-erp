@@ -7,6 +7,9 @@ Future<T?> quickSheet<T>(
   context: context,
   isScrollControlled: true,
   showDragHandle: true,
+  sheetAnimationStyle: MediaQuery.disableAnimationsOf(context)
+      ? AnimationStyle.noAnimation
+      : null,
   builder: (context) => DraggableScrollableSheet(
     expand: false,
     initialChildSize: .5,

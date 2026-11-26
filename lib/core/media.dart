@@ -14,12 +14,14 @@ import 'phase_one/store.dart';
 class LocalAttachment {
   final String id, path, mime, name;
   final int bytes;
+  final Uint8List? preview;
   const LocalAttachment({
     required this.id,
     required this.path,
     required this.mime,
     required this.name,
     required this.bytes,
+    this.preview,
   });
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -129,11 +131,34 @@ class SchoolMedia {
     if (pages.isEmpty || pages.length > 5) {
       throw const FormatException('Choose one to five pages');
     }
-    return persist(
+    final file = await persist(
       owner,
       await compute(_pdf, pages),
       'application/pdf',
       name: 'Completed work.pdf',
+    );
+    final cover = await compute(_smallPreview, pages.first);
+    final preview = await scanPreview(owner, file.id);
+    if (preview != null && !_revoked.contains(owner)) {
+      await preview.writeAsBytes(cover, flush: true);
+      if (_revoked.contains(owner) && await preview.exists()) {
+        await preview.delete();
+      }
+    }
+    return LocalAttachment(
+      id: file.id,
+      path: file.path,
+      mime: file.mime,
+      name: file.name,
+      bytes: file.bytes,
+      preview: cover,
+    );
+  }
+
+  static Future<File?> scanPreview(String owner, String asset) async {
+    if (!RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(asset)) return null;
+    return File(
+      paths.join((await directory(owner)).path, '$asset-preview.jpg'),
     );
   }
 
@@ -197,4 +222,9 @@ Future<Uint8List> _pdf(List<Uint8List> pages) async {
     );
   }
   return doc.save();
+}
+
+Uint8List _smallPreview(Uint8List bytes) {
+  final page = im.decodeImage(bytes)!;
+  return im.encodeJpg(im.copyResize(page, width: 200), quality: 76);
 }

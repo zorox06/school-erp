@@ -255,9 +255,36 @@ void main() {
     );
     await db.queueReceipt('u:s', notice, true);
     await db.queueReceipt('u:s', notice, false);
+    await db.cacheNotices('u:s', [notice]);
     expect((await db.due('u:s', now)).single.payload['acknowledge'], isTrue);
     expect((await db.cached('u:s', 'notice')).single['acknowledged'], isTrue);
   });
+  test(
+    'collection refresh batches updates and keeps pending local records',
+    () async {
+      const scope = 'u:s', kind = 'homework/staff';
+      await db.putCache(scope, kind, 'stale', {'id': 'stale'});
+      await db.queueFeature(
+        scope,
+        'homework',
+        'local-op',
+        {},
+        cacheKind: kind,
+        cacheKey: 'pending',
+        optimistic: {'id': 'pending', 'title': 'Local edit'},
+      );
+      await db.replaceCollection(scope, kind, [
+        {'id': 'pending', 'title': 'Server copy'},
+        {'id': 'fresh', 'title': 'First server copy'},
+        {'id': 'fresh', 'title': 'Latest server copy'},
+      ]);
+      final rows = {
+        for (final row in await db.cached(scope, kind)) row['id']: row['title'],
+      };
+      expect(rows, {'pending': 'Local edit', 'fresh': 'Latest server copy'});
+      expect(await db.pending(scope), 1);
+    },
+  );
   test('queue survives database close and reopen on disk', () async {
     final temp = await Directory.systemTemp.createTemp(
       'schoolday-sqlite-test-',

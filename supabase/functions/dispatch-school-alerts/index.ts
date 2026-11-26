@@ -70,6 +70,10 @@ export async function handler(request: Request): Promise<Response> {
         }
         const devices = await rest<Device[]>(`erp_device_tokens?select=token&school_id=eq.${q(row.school_id)}&user_id=eq.${q(row.user_id)}`);
         if (!devices.length) throw new Error('no_registered_device');
+        const conversation = row.category === 'message' && row.entity_id
+          ? (await rest<{conversation_id:string;erp_conversations:{student_id:string}}[]>(
+              `erp_messages?select=conversation_id,erp_conversations!inner(student_id)&school_id=eq.${q(row.school_id)}&id=eq.${q(row.entity_id)}`))[0]
+          : undefined;
         let failed = false;
         for (const device of devices) {
           const urgent = row.category==='absence'||row.category==='emergency';
@@ -80,7 +84,7 @@ export async function handler(request: Request): Promise<Response> {
             method:'POST',headers:{'Authorization':`Bearer ${bearer}`,'Content-Type':'application/json'},signal:AbortSignal.timeout(15000),
             body:JSON.stringify({message:{fid:device.token,
               ...(approval?{}:{notification:{title:emergency?'Urgent school alert':row.category==='absence'?'School attendance update':'New school update',body:'Open Schoolday to securely view the update.'}}),
-              data:{type:row.category,event_id:row.id,school_id:row.school_id,entity_id:row.entity_id??'',approve:approval?'true':'false',channel:emergency?'emergency':urgent?'urgent':'quiet'},
+              data:{type:row.category,event_id:row.id,school_id:row.school_id,student_id:conversation?.erp_conversations.student_id??row.student_id??'',...(conversation ? {conversation_id:conversation.conversation_id} : {}),entity_id:row.entity_id??'',approve:approval?'true':'false',channel:emergency?'emergency':urgent?'urgent':'quiet'},
               android:{priority:urgent||approval?'high':'normal',ttl:'3600s',...(approval?{}:{notification:{channel_id:emergency?'school_emergency':urgent?'school_urgent':'school_quiet',tag:row.id,visibility:'PRIVATE'}})},
               apns:{headers:{'apns-priority':urgent?'10':'5','apns-push-type':'alert','apns-collapse-id':row.id},
                 payload:{aps:{...(urgent?{sound:'default'}:{}),...(emergency?{'interruption-level':'time-sensitive'}:{}),...(approval?{category:'LEAVE_REQUEST',alert:{title:'School leave request',body:'Open Schoolday to review the request.'}}:{}),'thread-id':'schoolday'}}}}})});

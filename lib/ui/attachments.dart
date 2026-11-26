@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
@@ -16,7 +18,7 @@ class SchoolAttachments extends StatelessWidget {
       for (final id in ids)
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
-          child: _Attachment(id: id as String),
+          child: _Attachment(key: ValueKey(id), id: id as String),
         ),
       if (ids.isEmpty)
         const InfoBanner('No attachments were shared with this item.'),
@@ -26,7 +28,7 @@ class SchoolAttachments extends StatelessWidget {
 
 class _Attachment extends StatefulWidget {
   final String id;
-  const _Attachment({required this.id});
+  const _Attachment({super.key, required this.id});
   @override
   State<_Attachment> createState() => _AttachmentState();
 }
@@ -116,6 +118,7 @@ class _AttachmentState extends State<_Attachment> {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (metadata?['mime'] == 'application/pdf') ScanCover(id: widget.id),
         if (imageUrl != null)
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
@@ -124,7 +127,13 @@ class _AttachmentState extends State<_Attachment> {
               cacheKey: '${AppScope.of(context).auth.userId}/${widget.id}',
               height: 170,
               fit: BoxFit.cover,
-              memCacheWidth: 512,
+              memCacheWidth: AppScope.of(context).thumbnailWidth,
+              fadeInDuration: MediaQuery.disableAnimationsOf(context)
+                  ? Duration.zero
+                  : const Duration(milliseconds: 500),
+              fadeOutDuration: MediaQuery.disableAnimationsOf(context)
+                  ? Duration.zero
+                  : const Duration(milliseconds: 1000),
               maxWidthDiskCache: 512,
               maxHeightDiskCache: 512,
               placeholder: (_, _) => const SizedBox(
@@ -143,7 +152,7 @@ class _AttachmentState extends State<_Attachment> {
             metadata?['mime'] == 'application/pdf'
                 ? Icons.picture_as_pdf_outlined
                 : Icons.image_outlined,
-            color: Palette.teal,
+            color: context.tones.teal,
           ),
           title: Text(
             failed
@@ -157,7 +166,7 @@ class _AttachmentState extends State<_Attachment> {
             metadata == null
                 ? 'Private file · Tap to load'
                 : '${((metadata!['bytes'] as num) / 1024).ceil()} KB · Private',
-            style: textStyle(11, color: Palette.muted),
+            style: textStyle(11, color: context.tones.muted),
           ),
           trailing: busy
               ? const SizedBox(
@@ -171,4 +180,45 @@ class _AttachmentState extends State<_Attachment> {
       ],
     ),
   );
+}
+
+class ScanCover extends StatefulWidget {
+  final String id;
+  const ScanCover({super.key, required this.id});
+  @override
+  State<ScanCover> createState() => _ScanCoverState();
+}
+
+class _ScanCoverState extends State<ScanCover> {
+  (String, String)? identity;
+  Future<File?>? cover;
+  @override
+  Widget build(BuildContext context) {
+    final owner = AppScope.of(context).auth.userId;
+    if (owner == null) return const SizedBox.shrink();
+    if (identity != (owner, widget.id)) {
+      identity = (owner, widget.id);
+      cover = SchoolMedia.scanPreview(
+        owner,
+        widget.id,
+      ).then((f) async => f != null && await f.exists() ? f : null);
+    }
+    return FutureBuilder<File?>(
+      key: ValueKey(identity),
+      future: cover,
+      builder: (context, result) {
+        final file = result.data;
+        return file == null
+            ? const SizedBox.shrink()
+            : Image.file(
+                file,
+                height: 120,
+                cacheWidth: 200,
+                fit: BoxFit.contain,
+                semanticLabel: 'Scanned first page',
+                errorBuilder: (_, _, _) => const SizedBox.shrink(),
+              );
+      },
+    );
+  }
 }

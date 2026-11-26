@@ -20,7 +20,7 @@ abstract class SchoolWidgetProvider:HomeWidgetProvider(){
   for(id in appWidgetIds){val views=RemoteViews(context.packageName,R.layout.school_widget)
    views.setTextViewText(R.id.widget_title,if(kind=="timetable")"Today’s timetable" else "Homework due")
    views.setTextViewText(R.id.widget_body,if(!enabled)"Enable widgets in Schoolday settings" else if(!valid)"Open Schoolday to refresh today’s lessons" else if(content.isBlank())"Nothing published yet" else content)
-   views.setOnClickPendingIntent(R.id.widget_root,HomeWidgetLaunchIntent.getActivity(context,MainActivity::class.java,Uri.parse("schoolday://$kind")))
+   views.setOnClickPendingIntent(R.id.widget_root,HomeWidgetLaunchIntent.getActivity(context,MainActivity::class.java,Uri.parse(if(valid) widgetData.getString("${kind}_url","schoolday://$kind") ?: "schoolday://$kind" else "schoolday://$kind")))
    appWidgetManager.updateAppWidget(id,views)
   }
  }

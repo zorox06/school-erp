@@ -40,6 +40,7 @@ class SchoolSnapshot {
         .map((e) => SchoolRecord.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
     return SchoolSnapshot(
+      platformOwner: m['platform_owner'] == true,
       schoolId: m['school_id'] as String?,
       schoolName: m['school_name'] as String?,
       displayName: m['display_name'] as String?,
@@ -72,6 +73,7 @@ class SchoolSnapshot {
         )
         .toList();
     return {
+      'platform_owner': platformOwner,
       'school_id': schoolId,
       'school_name': schoolName,
       'display_name': displayName,
@@ -90,6 +92,7 @@ class SchoolSnapshot {
     };
   }
 
+  final bool platformOwner;
   final String? schoolId, schoolName, displayName;
   final Workspace? role;
   final List<SchoolRecord> children,
@@ -104,6 +107,7 @@ class SchoolSnapshot {
       invoices,
       notifications;
   const SchoolSnapshot({
+    this.platformOwner = false,
     this.schoolId,
     this.schoolName,
     this.displayName,
@@ -237,6 +241,7 @@ class AppController extends ChangeNotifier {
   createPhaseOne;
   final Future<void> Function(String? owner)? onLeaving;
   final Future<String?> Function(bool enabled)? updatePush;
+  final Future<Map<String, dynamic>> Function()? readDeviceInfo;
   String? pushStatus;
   PhaseOneController? phaseOne;
   SchoolFeatures? features;
@@ -249,7 +254,13 @@ class AppController extends ChangeNotifier {
   bool _disposed = false;
   bool signingOut = false;
   bool notificationsBusy = false;
-  bool dataSaver = false;
+  bool? _dataSaverPreference;
+  bool _lowRam = false;
+  bool _reduceDeviceWork = false;
+  bool get dataSaver => _dataSaverPreference ?? _lowRam;
+  bool get reduceMotion => _dataSaverPreference == true;
+  bool get limitEffects => _reduceDeviceWork;
+  int get thumbnailWidth => _reduceDeviceWork ? 320 : 512;
   bool widgetEnabled = false;
   Future<void> setWidgets(bool v) async {
     widgetEnabled = v;
@@ -258,8 +269,19 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> setDataSaver(bool v) async {
-    dataSaver = v;
-    await (await SharedPreferences.getInstance()).setBool("dataSaver", v);
+    _dataSaverPreference = v;
+    await (await SharedPreferences.getInstance()).setBool('dataSaver', v);
+    if (!_disposed) notifyListeners();
+  }
+
+  Future<void> refreshDevicePerformance() async {
+    final info = await readDeviceInfo?.call();
+    if (_disposed || info == null) return;
+    final lowRam = info['low_ram'] == true;
+    final reduceWork = lowRam || info['reduce_work'] == true;
+    if (lowRam == _lowRam && reduceWork == _reduceDeviceWork) return;
+    _lowRam = lowRam;
+    _reduceDeviceWork = reduceWork;
     notifyListeners();
   }
 
@@ -310,27 +332,33 @@ class AppController extends ChangeNotifier {
     this.createPhaseOne,
     this.onLeaving,
     this.updatePush,
+    this.readDeviceInfo,
   });
   bool get entered => auth.signedIn;
   List<SchoolRecord> learningItems(bool worksheet) {
     if (features == null) {
       return worksheet ? snapshot.worksheets : snapshot.homework;
     }
-    return features!
-        .rows(worksheet ? 'worksheets' : 'homework')
-        .map(
-          (r) => SchoolRecord.fromJson({
-            ...r,
-            'status': r['_pending'] == true
-                ? 'pending'
-                : r['submission'] is Map
-                ? ((r['submission'] as Map)['feedback'] == null
-                      ? 'submitted'
-                      : 'reviewed')
-                : r['status'],
-          }),
-        )
-        .toList();
+    final f = features!;
+    final submissions = {
+      for (final r in f.rows('submissions'))
+        if (r['student_id'] == selectedChildId) r['homework_id']: r,
+    };
+    return f.rows(worksheet ? 'worksheets' : 'homework').map((r) {
+      final local = worksheet ? null : submissions[r['id']];
+      final submission = local?['_pending'] == true
+          ? local
+          : r['submission'] ?? local;
+      return SchoolRecord.fromJson({
+        ...r,
+        'submission': submission,
+        'status': r['_pending'] == true || submission?['_pending'] == true
+            ? 'pending'
+            : submission is Map
+            ? (submission['feedback'] == null ? 'submitted' : 'reviewed')
+            : r['status'],
+      });
+    }).toList();
   }
 
   List<SchoolRecord> get timetableItems => features == null
@@ -354,6 +382,8 @@ class AppController extends ChangeNotifier {
     notificationsEnabled =
         _preferences?.getBool('notification_preference') ?? false;
     compactView = _preferences?.getBool('compact_view') ?? false;
+    _dataSaverPreference = _preferences?.getBool('dataSaver');
+    unawaited(refreshDevicePerformance());
     _subscription = auth.changes.listen((active) async {
       if (_disposed) return;
       if (!active) {
@@ -477,13 +507,14 @@ class AppController extends ChangeNotifier {
   }
 
   VoidCallback? onChildChanged;
-  void chooseChild(String id) {
+  Future<void> chooseChild(String id) async {
     if (id == selectedChildId) return;
     if (!snapshot.children.any((c) => c.id == id)) return;
     selectedChildId = id;
-    unawaited(features?.selectChild(id));
+    final switching = features?.selectChild(id);
     notifyListeners();
     onChildChanged?.call();
+    await switching;
   }
 
   void chooseClass(String id) {

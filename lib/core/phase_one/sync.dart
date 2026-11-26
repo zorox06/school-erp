@@ -301,16 +301,7 @@ class PhaseOneController extends ChangeNotifier {
     try {
       final page = await remote.notices(school, more ? _noticeCursor : null);
       if (!active) return;
-      for (final n in page) {
-        final cached = (await store.cached(
-          scope,
-          'notice',
-        )).where((e) => e['id'] == n.id).firstOrNull;
-        // Keep an offline receipt until the exact queued operation is accepted.
-        if (cached?['_pending'] != true) {
-          await store.putCache(scope, 'notice', n.id, n.toJson());
-        }
-      }
+      await store.cacheNotices(scope, page);
       hasMoreNotices = page.length == 30;
       if (page.isNotEmpty) {
         final n = page.last;

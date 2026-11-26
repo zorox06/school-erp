@@ -6,9 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:schoolday/app.dart';
 import 'package:schoolday/core/data.dart';
 import 'package:schoolday/core/fees.dart';
-import 'package:schoolday/features/learning.dart';
+import 'package:schoolday/features/learning/screen.dart';
 
-import 'app_test.dart' show makeController, TestAuth;
+import 'app_test.dart' show makeController, TestAuth, chooseDestination;
 
 void main() {
   test('live membership and selected child govern access to statements', () {
@@ -62,15 +62,10 @@ void main() {
       final c = await makeController(role: role);
       await tester.pumpWidget(SchooldayApp(controller: c));
       await tester.pumpAndSettle();
-      final homework = find.text('Homework').hitTestable();
-      await tester.scrollUntilVisible(
-        find.text('Homework'),
-        180,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.tap(homework.first);
-      await tester.pumpAndSettle();
-      expect(find.byType(LearningPage), findsOneWidget);
+      await chooseDestination(tester, 'Campus');
+      final teaching=find.widgetWithText(ChoiceChip,'Learning');
+      await tester.ensureVisible(teaching);await tester.tap(teaching);await tester.pumpAndSettle();
+      expect(find.byType(LearningScreen), findsOneWidget);
       expect(find.text('Your teaching shelf'.toUpperCase()), findsWidgets);
       await tester.pumpWidget(const SizedBox());
       c.dispose();

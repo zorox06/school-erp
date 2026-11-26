@@ -141,6 +141,12 @@ try {
   await db.query('insert into auth.users values($1)',[substitute]);
   await db.query("insert into public.school_memberships(school_id,user_id,role,active) values($1,$2,'teacher',true)",[school,substitute]);
   await action(principal,'timetable_change',id(61),{class_id:classroom,title:'Substitute fixture',date:new Date().toISOString(),substitute_id:substitute});
+  await db.exec('RESET ROLE');
+  await db.query("update public.school_content set data=data || jsonb_build_object('duration_minutes',45) where id=$1",[id(61)]);
+  await action(principal,'timetable_change',id(621),{item_id:id(61),class_id:classroom,title:'Cover reassigned',date:new Date().toISOString(),substitute_id:substitute});
+  check((await runAs(principal,'select data from public.school_content where id=$1',[id(61)])).rows[0].data.duration_minutes===45,'Assigning cover retains existing period metadata');
+  const coverage=(await runAs(principal,'select public.erp_principal_summary($1,$2) data',[school,day])).rows[0].data;
+  check(Array.isArray(coverage.unmarked_classes) && !coverage.unmarked_classes.some(c=>c.id===classroom),'A marked class is excluded from unmarked classes');
   await denied(substitute,'select public.erp_roster($1,$2)',[school,classroom]);
   check((await runAs(substitute,'select public.erp_workspace($1,null) data',[school])).rows[0].data.timetable.some(r=>r.id===id(61)),'Substitute can see their own lesson without permanent class access');
   await db.exec('RESET ROLE');

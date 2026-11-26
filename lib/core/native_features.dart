@@ -29,6 +29,8 @@ class NativeSchoolFeatures {
       );
     } on MissingPluginException {
       return {'timezone': 'UTC', 'low_ram': false};
+    } on PlatformException {
+      return {'timezone': 'UTC', 'low_ram': false};
     }
   }
 

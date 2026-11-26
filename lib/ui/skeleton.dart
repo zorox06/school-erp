@@ -23,7 +23,7 @@ class SchoolSkeleton extends StatelessWidget {
                 width: width,
                 height: width == double.infinity ? 90 : 24,
                 decoration: BoxDecoration(
-                  color: Palette.mint,
+                  color: context.tones.mint,
                   borderRadius: BorderRadius.circular(14),
                 ),
               ),

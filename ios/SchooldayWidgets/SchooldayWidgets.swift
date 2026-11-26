@@ -1,6 +1,6 @@
 import WidgetKit
 import SwiftUI
-struct SchoolEntry: TimelineEntry {let date:Date;let title:String;let body:String}
+struct SchoolEntry: TimelineEntry {let date:Date;let title:String;let body:String;var link:URL? = nil}
 struct SchoolProvider: TimelineProvider {
  let kind:String
  func placeholder(in context:Context)->SchoolEntry {SchoolEntry(date:Date(),title:kind=="timetable" ? "Today’s timetable":"Homework due",body:"Open Schoolday to view school updates")}
@@ -13,13 +13,13 @@ struct SchoolProvider: TimelineProvider {
   let formatter=DateFormatter();formatter.calendar=Calendar(identifier:.gregorian);formatter.locale=Locale(identifier:"en_US_POSIX");formatter.dateFormat="yyyy-MM-dd"
   let valid=enabled && (kind != "timetable" || updated.hasPrefix(formatter.string(from:Date())))
   let content=valid ? (data?.string(forKey:kind) ?? "") : ""
-  return SchoolEntry(date:Date(),title:kind=="timetable" ? "Today’s timetable":"Homework due",body: !enabled ? "Enable widgets in Schoolday settings" : !valid ? "Open Schoolday to refresh today’s lessons" : content.isEmpty ? "Nothing published yet" : content)
+  return SchoolEntry(date:Date(),title:kind=="timetable" ? "Today’s timetable":"Homework due",body: !enabled ? "Enable widgets in Schoolday settings" : !valid ? "Open Schoolday to refresh today’s lessons" : content.isEmpty ? "Nothing published yet" : content,link: valid ? data?.string(forKey:"\(kind)_url").flatMap { URL(string:$0) } : nil)
  }
 }
 struct SchoolWidgetView: View {
  let entry:SchoolEntry;let kind:String
  var body: some View {
-  VStack(alignment:.leading,spacing:10){Text("SCHOOLDAY").font(.caption2.weight(.bold)).foregroundColor(Color(red:0.086,green:0.482,blue:0.408));Text(entry.title).font(.headline);Text(entry.body).font(.caption).lineLimit(5);Spacer(minLength:0)}.padding().frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading).modifier(SchoolWidgetBackground()).privacySensitive().widgetURL(URL(string:"schoolday://\(kind)"))
+  VStack(alignment:.leading,spacing:10){Text("SCHOOLDAY").font(.caption2.weight(.bold)).foregroundColor(Color(red:0.086,green:0.482,blue:0.408));Text(entry.title).font(.headline);Text(entry.body).font(.caption).lineLimit(5);Spacer(minLength:0)}.padding().frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading).modifier(SchoolWidgetBackground()).privacySensitive().widgetURL(entry.link ?? URL(string:"schoolday://\(kind)"))
  }
 }
 struct SchooldayTimetable:Widget {let kind="SchooldayTimetable";var body:some WidgetConfiguration {StaticConfiguration(kind:kind,provider:SchoolProvider(kind:"timetable")){SchoolWidgetView(entry:$0,kind:"timetable")}.configurationDisplayName("Today’s timetable").description("Your selected child’s published lessons.").supportedFamilies([.systemSmall,.systemMedium])}}

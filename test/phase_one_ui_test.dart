@@ -5,8 +5,8 @@ import 'package:schoolday/core/data.dart';
 import 'package:schoolday/core/phase_one/models.dart';
 import 'package:schoolday/core/phase_one/store.dart';
 import 'package:schoolday/core/phase_one/sync.dart';
-import 'package:schoolday/features/attendance.dart';
-import 'package:schoolday/features/notices.dart';
+import 'package:schoolday/features/attendance/screen.dart';
+import 'package:schoolday/features/notices/screen.dart';
 import 'package:schoolday/ui/components.dart';
 
 import 'app_test.dart' show makeController;

@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:schoolday/app.dart';
 import 'package:schoolday/core/data.dart';
-import 'package:schoolday/features/academics.dart';
-import 'package:schoolday/features/homework.dart';
-import 'package:schoolday/features/leadership.dart';
-import 'package:schoolday/features/alert_preferences.dart';
-import 'package:schoolday/features/messages.dart';
-import 'package:schoolday/features/scanner.dart';
-import 'package:schoolday/features/timetable_edit.dart';
+import 'package:schoolday/features/academics/screen.dart';
+import 'package:schoolday/features/homework/screen.dart';
+import 'package:schoolday/features/leadership/screen.dart';
+import 'package:schoolday/features/alert_preferences/screen.dart';
+import 'package:schoolday/features/messages/screen.dart';
+import 'package:schoolday/features/scanner/screen.dart';
+import 'package:schoolday/features/timetable_edit/screen.dart';
 
 import 'app_test.dart' show makeController;
 

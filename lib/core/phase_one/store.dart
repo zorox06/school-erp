@@ -115,6 +115,26 @@ class LocalSchoolStore {
         'payload': jsonEncode(payload),
       }, conflictAlgorithm: ConflictAlgorithm.replace)
       .then((_) {});
+
+  Future<void> cacheNotices(String scope, List<SchoolNotice> notices) async {
+    final batch = db.batch();
+    // Delete and replace clean records while preserving pending offline receipts.
+    for (final notice in notices) {
+      batch.delete(
+        'cache',
+        where: "scope=? AND kind='notice' AND item_key=? AND pending=0",
+        whereArgs: [scope, notice.id],
+      );
+      batch.insert('cache', {
+        'scope': scope,
+        'kind': 'notice',
+        'item_key': notice.id,
+        'payload': jsonEncode(notice.toJson()),
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
+    await batch.commit(noResult: true);
+  }
+
   Future<void> cacheRoster(String scope, List<RosterStudent> students) =>
       db.transaction((tx) async {
         for (final s in students) {
@@ -186,22 +206,20 @@ class LocalSchoolStore {
       where: 'scope=? AND kind=? AND pending=0',
       whereArgs: [scope, kind],
     );
-    for (final row in rows) {
-      final key = keyOf?.call(row) ?? row['id'] as String;
-      final pending = await tx.query(
-        'cache',
-        columns: ['pending'],
-        where: 'scope=? AND kind=? AND item_key=?',
-        whereArgs: [scope, kind, key],
-      );
-      if (pending.firstOrNull?['pending'] == 1) continue;
-      await tx.insert('cache', {
+    final latest = {
+      for (final row in rows) keyOf?.call(row) ?? row['id'] as String: row,
+    };
+    final batch = tx.batch();
+    // Any conflicting row left after the delete is a pending local edit.
+    for (final entry in latest.entries) {
+      batch.insert('cache', {
         'scope': scope,
         'kind': kind,
-        'item_key': key,
-        'payload': jsonEncode(row),
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+        'item_key': entry.key,
+        'payload': jsonEncode(entry.value),
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
     }
+    await batch.commit(noResult: true);
   });
   Future<void> queueFeature(
     String scope,
