@@ -48,9 +48,17 @@ void main() {
     testWidgets('Inbox golden and semantic contrast in ${brightness.name}', (
       tester,
     ) async {
-      final loader = FontLoader('Manrope')
-        ..addFont(rootBundle.load('assets/fonts/Manrope.ttf'));
-      await loader.load();
+      const fonts = {
+        'Manrope': 'assets/fonts/Manrope.ttf',
+        'packages/lucide_icons_flutter/Lucide':
+            'packages/lucide_icons_flutter/assets/lucide.ttf',
+        'MaterialIcons': 'fonts/MaterialIcons-Regular.otf',
+      };
+      for (final font in fonts.entries) {
+        final loader = FontLoader(font.key)
+          ..addFont(rootBundle.load(font.value));
+        await loader.load();
+      }
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(390, 650);
       addTearDown(tester.view.resetDevicePixelRatio);
