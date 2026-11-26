@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -83,9 +85,11 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      // Windows and the Linux CI runner rasterize the bundled fonts differently.
+      final goldenDir = Platform.isWindows ? 'goldens/windows' : 'goldens';
       await expectLater(
         find.byKey(const Key('inbox-golden')),
-        matchesGoldenFile('goldens/inbox_${brightness.name}.png'),
+        matchesGoldenFile('$goldenDir/inbox_${brightness.name}.png'),
       );
       await tester.pumpWidget(const SizedBox());
       c.dispose();
